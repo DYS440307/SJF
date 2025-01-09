@@ -98,7 +98,7 @@ menu_structure = {
                     },
                     "6": {
                         "label": "G0202-000331(TJS8)",
-                        "action": ("AP.配置文件.TCL.G0202-000330(TJS6", "BnO_main_speaker_bass")
+                        "action": ("AP.配置文件.TCL.G0202-000331(TJS8)", "BnO_main_speaker_bass")
                     }
 
                 }
