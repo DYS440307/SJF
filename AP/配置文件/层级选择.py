@@ -87,7 +87,20 @@ menu_structure = {
                     "3": {
                            "label": "G0202-000201",
                             "action": ("AP.配置文件.TCL.G0202-000201", "BnO_main_speaker_bass")
-                        }
+                        },
+                    "4": {
+                        "label": "491",
+                        "action": ("AP.配置文件.创维.491", "BnO_main_speaker_bass")
+                    },
+                    "5": {
+                        "label": "G0202-000330(TJS6)",
+                        "action": ("AP.配置文件.TCL.G0202-000330(TJS6)", "BnO_main_speaker_bass")
+                    },
+                    "6": {
+                        "label": "G0202-000331(TJS8)",
+                        "action": ("AP.配置文件.TCL.G0202-000330(TJS6", "BnO_main_speaker_bass")
+                    }
+
                 }
             }
         },
