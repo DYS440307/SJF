@@ -72,8 +72,8 @@ menu_structure = {
                                     "action": ("AP.配置文件.TCL.KL.BnO主音箱高音", "BnO_main_speaker_treble")
                                 },
                                 "4": {
-                                    "label": "G0202-000283(TJS6)",
-                                    "action": ("AP.配置文件.TCL.KL.G0202-000283(TJS6)", "BnO_main_speaker_bass")
+                                    "label": "G0202-000313",
+                                    "action": ("AP.配置文件.TCL.KL.G0202-000313", "BnO_main_speaker_bass")
                                       },
                                 "5": {"label": "非BnO主音箱低音"},
                                 "6": {"label": "非BnO主音箱高音"}
