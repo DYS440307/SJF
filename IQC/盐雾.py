@@ -3,7 +3,7 @@ from openpyxl import load_workbook
 
 # 读取Excel文件
 file_path = r'F:\system\Desktop\PY\IQC\2025年.xlsx'
-df = pd.read_excel(file_path, sheet_name='1月')
+df = pd.read_excel(file_path, sheet_name='2月')
 
 # 筛选部品类型
 valid_types = ['T铁', 'U铁', '盆架', '钕铁硼', '华司']
@@ -36,15 +36,18 @@ existing_row_count = existing_data.shape[0]
 
 # 从第四行开始写入新数据
 for idx, row in enumerate(df_filtered.values, start=existing_row_count + 1):
-    # 在现有数据下方追加新数据
+    target_row = idx + 1  # 目标行数，从第四行开始
+
+    # 插入日期、供应商、部品类型和料号到当前行
     sheet.append(row.tolist())
 
-    # 检查第一列（日期列）是否有数据，如果有，写入第五列到第八列
+    # 检查日期列（第一列）是否有数据，如果有，填入第五到第八列的固定值
     if row[0]:  # 如果日期列有数据
-        sheet.cell(row=idx+1, column=5, value="5PCS")  # 第五列写入 5PCS
-        sheet.cell(row=idx+1, column=6, value="无")    # 第六列写入 无
-        sheet.cell(row=idx+1, column=7, value="合格")  # 第七列写入 合格
-        sheet.cell(row=idx+1, column=8, value="邓洋枢")  # 第八列写入 邓洋枢
+        # 填写第五列到第八列
+        sheet.cell(row=target_row, column=5, value="5PCS")  # 第五列写入 5PCS
+        sheet.cell(row=target_row, column=6, value="无")    # 第六列写入 无
+        sheet.cell(row=target_row, column=7, value="合格")  # 第七列写入 合格
+        sheet.cell(row=target_row, column=8, value="邓洋枢")  # 第八列写入 邓洋枢
 
 # 保存修改后的工作簿
 book.save(output_path)
