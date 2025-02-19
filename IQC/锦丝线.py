@@ -1,7 +1,7 @@
 import openpyxl
 from datetime import datetime, timedelta
 # Define file paths
-file1_path = 'F:/system/Desktop/2024年.xlsx'
+file1_path = 'F:/system/Desktop/2025年.xlsx'
 file2_path = 'F:/system/Desktop/锦丝线实验记录.xlsx'
 # 使用前注意删除不良汇总避免干扰
 # Define the keywords to look for in column C
