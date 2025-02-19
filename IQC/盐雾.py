@@ -1,4 +1,5 @@
 import pandas as pd
+from openpyxl import load_workbook
 
 # 读取Excel文件
 file_path = r'F:\system\Desktop\PY\IQC\2025年.xlsx'
@@ -18,7 +19,29 @@ df_filtered = df_filtered.drop_duplicates(subset=['月份', '供应商', '料号
 # 只选择需要的列：第一列到第四列（日期、供应商、部品类型、料号）
 df_filtered = df_filtered[['日期', '供应商', '部品类型', '料号']]
 
-# 写入新的Excel文件
+# 读取现有的Excel文件（包括目标表格中的内容）
 output_path = r'F:\system\Desktop\PY\IQC\盐雾实验记录.xlsx'
-with pd.ExcelWriter(output_path, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
-    df_filtered.to_excel(writer, index=False, header=False, startrow=3, sheet_name='Sheet1')
+
+# 使用 openpyxl 加载现有工作簿
+book = load_workbook(output_path)
+
+# 检查是否存在目标工作表，并加载该工作表
+if 'Sheet1' in book.sheetnames:
+    sheet = book['Sheet1']
+else:
+    # 如果目标工作表不存在，则创建一个新的工作表
+    sheet = book.create_sheet('Sheet1')
+
+# 获取现有工作表的前三行数据
+existing_data = pd.read_excel(output_path, sheet_name='Sheet1', header=None)
+
+# 获取当前工作表的总行数
+existing_row_count = existing_data.shape[0]
+
+# 如果目标工作表中已经有数据，从第四行开始写入新数据
+for idx, row in enumerate(df_filtered.values, start=existing_row_count + 1):
+    # 在现有数据下方追加新数据
+    sheet.append(row.tolist())
+
+# 保存修改后的工作簿
+book.save(output_path)
