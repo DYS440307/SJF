@@ -16,8 +16,8 @@ df_filtered['月份'] = df_filtered['日期'].dt.month
 # 去重操作
 df_filtered = df_filtered.drop_duplicates(subset=['月份', '供应商', '料号'])
 
-# 只选择需要的列：第一列到第四列（日期、供应商、部品类型、料号）
-df_filtered = df_filtered[['日期', '供应商', '部品类型', '料号']]
+# 重新排列列顺序：将日期列排在第一列，其他列后面
+df_filtered = df_filtered[['日期', '供应商', '部品类型', '料号']]  # 日期排第一
 
 # 读取现有的Excel文件（包括目标表格中的内容）
 output_path = r'F:\system\Desktop\PY\IQC\盐雾实验记录.xlsx'
@@ -25,23 +25,26 @@ output_path = r'F:\system\Desktop\PY\IQC\盐雾实验记录.xlsx'
 # 使用 openpyxl 加载现有工作簿
 book = load_workbook(output_path)
 
-# 检查是否存在目标工作表，并加载该工作表
-if 'Sheet1' in book.sheetnames:
-    sheet = book['Sheet1']
-else:
-    # 如果目标工作表不存在，则创建一个新的工作表
-    sheet = book.create_sheet('Sheet1')
+# 获取第一个工作表
+sheet = book.worksheets[0]  # 第一个工作表
 
 # 获取现有工作表的前三行数据
-existing_data = pd.read_excel(output_path, sheet_name='Sheet1', header=None)
+existing_data = pd.read_excel(output_path, sheet_name=sheet.title, header=None)
 
 # 获取当前工作表的总行数
 existing_row_count = existing_data.shape[0]
 
-# 如果目标工作表中已经有数据，从第四行开始写入新数据
+# 从第四行开始写入新数据
 for idx, row in enumerate(df_filtered.values, start=existing_row_count + 1):
     # 在现有数据下方追加新数据
     sheet.append(row.tolist())
+
+    # 检查第一列（日期列）是否有数据，如果有，写入第五列到第八列
+    if row[0]:  # 如果日期列有数据
+        sheet.cell(row=idx+1, column=5, value="5PCS")  # 第五列写入 5PCS
+        sheet.cell(row=idx+1, column=6, value="无")    # 第六列写入 无
+        sheet.cell(row=idx+1, column=7, value="合格")  # 第七列写入 合格
+        sheet.cell(row=idx+1, column=8, value="邓洋枢")  # 第八列写入 邓洋枢
 
 # 保存修改后的工作簿
 book.save(output_path)
