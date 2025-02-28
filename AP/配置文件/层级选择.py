@@ -113,7 +113,10 @@ menu_structure = {
             "next_level": {
                 "title": "请选择车载子类别：",
                 "options": {
-                    "1": {"label": "吉林龙山"},
+                    "1": {
+                        "label": "州伊",
+                        "action": ("AP.配置文件.车载.州伊", "BnO_main_speaker_bass")
+                    },
                     "2": {"label": "R7"}
                 }
             }
