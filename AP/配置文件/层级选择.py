@@ -103,6 +103,10 @@ menu_structure = {
                     "7": {
                         "label": "CF10",
                         "action": ("AP.配置文件.创维.CF10", "BnO_main_speaker_bass")
+                    },
+                    "8": {
+                        "label": "283&284",
+                        "action": ("AP.配置文件.TCL.283&284", "BnO_main_speaker_bass")
                     }
 
                 }
