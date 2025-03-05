@@ -107,6 +107,10 @@ menu_structure = {
                     "8": {
                         "label": "283&284",
                         "action": ("AP.配置文件.TCL.283&284", "BnO_main_speaker_bass")
+                    },
+                    "9": {
+                        "label": "12302-500240",
+                        "action": ("AP.配置文件.TCL.12302-500240", "BnO_main_speaker_bass")
                     }
 
                 }
