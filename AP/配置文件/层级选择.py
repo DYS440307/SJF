@@ -128,6 +128,22 @@ menu_structure = {
                     "2": {"label": "R7"}
                 }
             }
+        },
+        "3": {
+            "label": "小米",
+            "next_level": {
+                "title": "请选择车载子类别：",
+                "options": {
+                    "1": {
+                        "label": "S002",
+                        "action": ("AP.配置文件.小米.S002", "BnO_main_speaker_bass")
+                    },
+                    "2": {
+                        "label": "S003",
+                        "action": ("AP.配置文件.小米.S003", "BnO_main_speaker_bass")
+                    }
+                }
+            }
         }
     }
 }
