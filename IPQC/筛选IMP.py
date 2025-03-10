@@ -1,7 +1,7 @@
 import openpyxl
 
 # 打开工作簿和工作表
-filepath = r'F:\system\Downloads\123.xlsx'
+filepath = r'F:\system\Downloads\1.xlsx'
 wb = openpyxl.load_workbook(filepath)
 ws = wb.active
 
