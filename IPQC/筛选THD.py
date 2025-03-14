@@ -8,7 +8,10 @@ ws = wb.active
 col = 2  # 从偶数列开始
 while col <= ws.max_column:
     delete_flag = False
-    for row in range(1, ws.max_row + 1):
+    # 只检查偶数行的第21~41行之间的行
+    for row in range(21, 42):
+        if row % 2 != 0:  # 只检查偶数行
+            continue
         cell_value = ws.cell(row=row, column=col).value
         try:
             if cell_value is not None:
