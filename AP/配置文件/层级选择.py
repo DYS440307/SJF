@@ -141,7 +141,11 @@ menu_structure = {
                     "2": {
                         "label": "S003",
                         "action": ("AP.配置文件.小米.S003", "BnO_main_speaker_bass")
-                    }
+                    },
+                    "3": {
+                        "label": "O32",
+                        "action": ("AP.配置文件.小米.O32", "BnO_main_speaker_bass")
+                    },
                 }
             }
         }
