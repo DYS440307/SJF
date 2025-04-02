@@ -27,7 +27,6 @@ for col in range(max_col, 1, -1):  # 从第二列开始（即列索引>=2），�
         ws.delete_cols(col)
         print(f"已删除第 {col} 列")
 
-# 保存处理后的结果到新的 Excel 文件，避免覆盖原文件
-output_path = r"C:\Users\SL\Downloads\1_processed.xlsx"
-wb.save(output_path)
-print("处理完成，结果已保存到：", output_path)
+# 保存工作簿
+wb.save(file_path)
+print("处理完成，已删除不符合条件的列组。")
