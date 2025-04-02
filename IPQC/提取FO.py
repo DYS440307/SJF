@@ -1,35 +1,40 @@
 import openpyxl
 
-# 打开源Excel文件
-source_file = r'C:\Users\SL\Downloads\1.xlsx'
-wb_source = openpyxl.load_workbook(source_file)
-sheet_source = wb_source.active  # 获取活动工作表
+# 加载源Excel文件
+file_path = r'C:\Users\SL\Downloads\1.xlsx'
+wb = openpyxl.load_workbook(file_path)
 
-# 获取第14行到第29行的数据（从第二列开始）
-data = []
-for row in range(14, 30):  # 行号从14到29
-    row_data = [sheet_source.cell(row=row, column=col).value for col in range(2, sheet_source.max_column + 1)]
-    data.append(row_data)
+# 获取第一个工作簿
+ws = wb.active
 
-# 找到最大值及其对应的第一列值
-max_value = None
-corresponding_value = None
-for row in data:
-    row_max = max(row)
-    if max_value is None or row_max > max_value:
-        max_value = row_max
-        corresponding_value = sheet_source.cell(row=data.index(row) + 14, column=1).value
+# 获取FO提取工作簿
+fo_ws = wb['FO提取']
 
-# 打开目标Excel文件（FO提取）
-target_file = r'FO提取.xlsx'
-wb_target = openpyxl.load_workbook(target_file)
-sheet_target = wb_target.active  # 获取活动工作表
+# 设置开始写入的行
+write_row = 1
 
-# 将对应的值写入目标工作簿的第一列
-sheet_target.append([corresponding_value])
+# 遍历第二列到最后一列
+for col in range(2, ws.max_column + 1):
+    max_value = None
+    max_value_row = None
 
-# 保存目标Excel文件
-wb_target.save(target_file)
+    # 遍历14行到29行，找到该列中的最大值及对应的第一列数值
+    for row in range(14, 30):
+        current_value = ws.cell(row=row, column=col).value
+        if max_value is None or current_value > max_value:
+            max_value = current_value
+            max_value_row = row
 
-print(f"最大值: {max_value}")
-print(f"对应的第一列值: {corresponding_value}")
+    # 获取对应的第一列数值
+    first_column_value = ws.cell(row=max_value_row, column=1).value
+
+    # 将对应的数值写入FO提取工作簿的第一列
+    fo_ws.cell(row=write_row, column=1, value=first_column_value)
+
+    # 写入下一行
+    write_row += 1
+
+# 保存修改后的源工作簿
+wb.save(file_path)
+
+print("操作完成，所有列的最大值对应的第一列数值已写入 'FO提取' 工作簿。")
