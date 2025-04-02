@@ -24,18 +24,20 @@ for col in range(2, ws.max_column + 1):
     # 遍历第14行到第29行，找到该列中的最大值及对应的第一列数值
     for row in range(14, 30):
         current_value = ws.cell(row=row, column=col).value
-        if max_value is None or current_value > max_value:
-            max_value = current_value
-            max_value_row = row
+        if current_value is not None:  # 确保 current_value 不是 None
+            if max_value is None or current_value > max_value:
+                max_value = current_value
+                max_value_row = row
 
-    # 获取对应的第一列数值
-    first_column_value = ws.cell(row=max_value_row, column=1).value
+    if max_value_row is not None:  # 确保找到了有效的最大值
+        # 获取对应的第一列数值
+        first_column_value = ws.cell(row=max_value_row, column=1).value
 
-    # 将对应的数值写入“FO提取”工作表的第一列
-    fo_ws.cell(row=write_row, column=1, value=first_column_value)
+        # 将对应的数值写入“FO提取”工作表的第一列
+        fo_ws.cell(row=write_row, column=1, value=first_column_value)
 
-    # 写入下一行
-    write_row += 1
+        # 写入下一行
+        write_row += 1
 
 # 保存修改后的源工作簿
 wb.save(file_path)
