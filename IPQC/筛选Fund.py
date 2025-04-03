@@ -1,7 +1,7 @@
 from openpyxl import load_workbook
 
 # 读取 Excel 文件
-file_path = r"C:\Users\SL\Downloads\1.xlsx"
+file_path = r"E:\System\download\1.xlsx"
 wb = load_workbook(file_path)
 ws = wb.active  # 默认操作第一个工作表
 

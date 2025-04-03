@@ -1,7 +1,7 @@
 import openpyxl
 
 # 加载源Excel文件
-file_path = r'C:\Users\SL\Downloads\1.xlsx'
+file_path = r'E:\System\download\1.xlsx'
 wb = openpyxl.load_workbook(file_path)
 
 # 获取第一个工作表
@@ -22,7 +22,7 @@ for col in range(2, ws.max_column + 1):
     max_value_row = None
 
     # 遍历第14行到第29行，找到该列中的最大值及对应的第一列数值
-    for row in range(14, 30):
+    for row in range(1, 93):
         current_value = ws.cell(row=row, column=col).value
         if current_value is not None:  # 确保 current_value 不是 None
             if max_value is None or current_value > max_value:
