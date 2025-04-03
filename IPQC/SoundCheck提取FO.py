@@ -21,7 +21,7 @@ for col in range(2, ws.max_column + 1):
     max_value = None
     max_value_row = None
 
-    # 遍历第14行到第29行，找到该列中的最大值及对应的第一列数值
+    # 遍历第1行到第92行，找到该列中的最大值及对应的第一列数值
     for row in range(1, 93):
         current_value = ws.cell(row=row, column=col).value
         if current_value is not None:  # 确保 current_value 不是 None
