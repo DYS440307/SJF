@@ -61,7 +61,7 @@ def process_data(user_id, experiment_record_path, experiment_report_path):
                 # 处理I列和K列的拼接：取I列切割后的第1个值与K列拼接并写入D1单元格
                 i_column_value_first = i_column_values[0] if len(i_column_values) > 0 else ""  # 获取I列切割后的第1个值
                 k_column_value = str(experiment_record_ws.cell(row=row, column=11).value)  # 第K列
-                experiment_report_ws["D1"] = i_column_value_first + k_column_value + "实验"  # 拼接后写入D1
+                experiment_report_ws["D1"] = i_column_value_first + k_column_value + "实验报告"  # 拼接后写入D1
 
                 # 直接退出循环，因为匹配已完成
                 break
