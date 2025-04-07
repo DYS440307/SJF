@@ -1,7 +1,7 @@
 import openpyxl
 
 # 加载源Excel文件
-file_path = r'E:\System\download\1.xlsx'
+file_path = r'E:\System\pic\1.xlsx'
 wb = openpyxl.load_workbook(file_path)
 
 # 获取第一个工作表
@@ -38,6 +38,8 @@ for col in range(2, ws.max_column + 1):
 
         # 写入下一行
         write_row += 1
+
+
 
 # 保存修改后的源工作簿
 wb.save(file_path)
