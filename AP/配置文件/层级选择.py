@@ -148,6 +148,18 @@ menu_structure = {
                     },
                 }
             }
+        },
+        "4": {
+            "label": "彩讯",
+            "next_level": {
+                "title": "请选择车载子类别：",
+                "options": {
+                    "1": {
+                        "label": "046",
+                        "action": ("AP.配置文件.彩讯.046", "BnO_main_speaker_bass")
+                    }
+                }
+            }
         }
     }
 }
