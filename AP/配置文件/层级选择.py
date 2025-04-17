@@ -125,14 +125,17 @@ menu_structure = {
                         "label": "州伊",
                         "action": ("AP.配置文件.车载.州伊", "BnO_main_speaker_bass")
                     },
-                    "2": {"label": "R7"}
+                    "2": {
+                        "label": "奇瑞4寸",
+                        "action": ("AP.配置文件.车载.奇瑞4寸", "BnO_main_speaker_bass")
+                    },
                 }
             }
         },
         "3": {
             "label": "小米",
             "next_level": {
-                "title": "请选择车载子类别：",
+                "title": "请选择小米子类别：",
                 "options": {
                     "1": {
                         "label": "S002",
@@ -152,7 +155,7 @@ menu_structure = {
         "4": {
             "label": "彩讯",
             "next_level": {
-                "title": "请选择车载子类别：",
+                "title": "请选择彩讯子类别：",
                 "options": {
                     "1": {
                         "label": "046",
