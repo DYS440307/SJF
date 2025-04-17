@@ -163,6 +163,18 @@ menu_structure = {
                     }
                 }
             }
+        },
+        "5": {
+            "label": "海信",
+            "next_level": {
+                "title": "请选择海信子类别：",
+                "options": {
+                    "1": {
+                        "label": "375&376",
+                        "action": ("AP.配置文件.海信.375&376", "BnO_main_speaker_bass")
+                    }
+                }
+            }
         }
     }
 }
