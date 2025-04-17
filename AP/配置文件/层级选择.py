@@ -160,6 +160,10 @@ menu_structure = {
                     "1": {
                         "label": "046",
                         "action": ("AP.配置文件.彩讯.046", "BnO_main_speaker_bass")
+                    },
+                    "2": {
+                        "label": "310100030",
+                        "action": ("AP.配置文件.彩讯.310100030", "BnO_main_speaker_bass")
                     }
                 }
             }
