@@ -1,7 +1,7 @@
 from openpyxl import load_workbook
 
 # 读取 Excel 文件
-file_path = r"E:\System\download\1.xlsx"
+file_path = r"E:\System\pic\1.xlsx"
 wb = load_workbook(file_path)
 ws = wb.active  # 默认操作第一个工作表
 
@@ -19,7 +19,7 @@ for col in range(max_col, 1, -1):  # 从第二列开始（即列索引>=2），�
             value = float(cell.value)
         except (TypeError, ValueError):
             value = None
-        if value is not None and value > 10:
+        if value is not None and value > 50:
             delete_flag = True
             break  # 若发现一个单元格满足条件，则该列标记为删除
 

@@ -13,7 +13,7 @@ for col in range(max_col, 1, -1):  # 从第二列开始（即列索引>=2）
     delete_flag = False
 
     # 判断第2行到第82行，要求数值在0~15之间
-    for row in range(2, 83):  # 包含第82行
+    for row in range(2, 94):  # 包含第82行
         cell = ws.cell(row=row, column=col)
         try:
             value = float(cell.value)
