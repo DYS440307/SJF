@@ -2,11 +2,11 @@ import os
 import openpyxl
 
 # 源文件夹路径
-source_folder = r"F:\system\Desktop\PY\OQC\InPut"
+source_folder = r"E:\System\desktop\PY\OQC\Input"
 # 目标文件夹路径
-target_folder = r"F:\system\Desktop\PY\OQC\OutPut"
+target_folder = r"E:\System\desktop\PY\OQC\Output"
 # 模板文件路径
-template_file = r"F:\system\Desktop\PY\OQC\转移模板.xlsx"
+template_file = r"E:\System\desktop\PY\OQC\转移模板.xlsx"
 
 
 def read_and_write_data(source_path, target_folder):

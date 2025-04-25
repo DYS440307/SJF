@@ -29,8 +29,8 @@ def copy_files_from_subfolders(src_dir, dest_dir):
 
 
 # 源目录和目标目录
-src_directory = r"F:\system\Desktop\PY\OQC\InPut"
-dest_directory = r"F:\system\Desktop\PY\OQC\OutPut"
+src_directory = r"E:\System\desktop\PY\OQC\Input"
+dest_directory = r"E:\System\desktop\PY\OQC\Input"
 
 # 执行复制操作
 copy_files_from_subfolders(src_directory, dest_directory)

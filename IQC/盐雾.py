@@ -9,7 +9,7 @@ file1 = r"E:\System\desktop\2025年.xlsx"
 file2 = r"E:\System\desktop\盐雾实验记录.xlsx"
 
 # 要操作的工作表名称（例如"1月")
-sheet_name = "1月"
+sheet_name = "4月"
 
 # 关键词列表
 keywords = ['T铁', 'U铁', '盆架', '钕铁硼', '华司']
