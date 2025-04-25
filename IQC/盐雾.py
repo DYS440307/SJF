@@ -1,53 +1,29 @@
-import pandas as pd
 from openpyxl import load_workbook
 
-# 读取Excel文件
-file_path = r'F:\system\Desktop\PY\IQC\2025年.xlsx'
-df = pd.read_excel(file_path, sheet_name='2月')
+# 文件路径
+file1 = r"E:\System\desktop\2025年.xlsx"
+file2 = r"E:\System\desktop\盐雾实验记录.xlsx"
 
-# 筛选部品类型
-valid_types = ['T铁', 'U铁', '盆架', '钕铁硼', '华司']
-df_filtered = df[df['部品类型'].isin(valid_types)].copy()  # 使用.copy()确保是副本
+# 关键词列表
+keywords = ['T铁', 'U铁', '盆架', '钕铁硼', '华司']
 
-# 去重：同一月份内，相同供应商和相同料号的部品只保留一次
-df_filtered['日期'] = pd.to_datetime(df_filtered['日期'])
-df_filtered['月份'] = df_filtered['日期'].dt.month
+# 加载工作簿与工作表
+wb1 = load_workbook(filename=file1)
+sheet1 = wb1.active  # 假设数据在第一个工作表中
 
-# 去重操作
-df_filtered = df_filtered.drop_duplicates(subset=['月份', '供应商', '料号'])
+wb2 = load_workbook(filename=file2)
+sheet2 = wb2.active  # 假设目标数据写入到第一个工作表中
 
-# 重新排列列顺序：将日期列排在第一列，其他列后面
-df_filtered = df_filtered[['日期', '供应商', '部品类型', '料号']]  # 日期排第一
+# 搜索符合条件的行并转移数据
+for row in sheet1.iter_rows(min_row=2, values_only=False):  # 跳过表头，从第二行开始
+    cell_value = row[2].value  # 第三列
+    if cell_value and any(kw in str(cell_value) for kw in keywords):
+        # 找到匹配行，提取前四列
+        values_to_copy = [row[i].value for i in range(4)]
+        # 写入到目标工作表指定单元格
+        sheet2['A4'], sheet2['B4'], sheet2['C4'], sheet2['D4'] = values_to_copy
+        break  # 如果只需要第一行匹配，找到后退出循环
 
-# 读取现有的Excel文件（包括目标表格中的内容）
-output_path = r'F:\system\Desktop\PY\IQC\盐雾实验记录.xlsx'
-
-# 使用 openpyxl 加载现有工作簿
-book = load_workbook(output_path)
-
-# 获取第一个工作表
-sheet = book.worksheets[0]  # 第一个工作表
-
-# 获取现有工作表的前三行数据
-existing_data = pd.read_excel(output_path, sheet_name=sheet.title, header=None)
-
-# 获取当前工作表的总行数
-existing_row_count = existing_data.shape[0]
-
-# 从第四行开始写入新数据
-for idx, row in enumerate(df_filtered.values, start=existing_row_count + 1):
-    target_row = idx + 1  # 目标行数，从第四行开始
-
-    # 插入日期、供应商、部品类型和料号到当前行
-    sheet.append(row.tolist())
-
-    # 检查日期列（第一列）是否有数据，如果有，填入第五到第八列的固定值
-    if row[0]:  # 如果日期列有数据
-        # 填写第五列到第八列
-        sheet.cell(row=target_row, column=5, value="5PCS")  # 第五列写入 5PCS
-        sheet.cell(row=target_row, column=6, value="无")    # 第六列写入 无
-        sheet.cell(row=target_row, column=7, value="合格")  # 第七列写入 合格
-        sheet.cell(row=target_row, column=8, value="邓洋枢")  # 第八列写入 邓洋枢
-
-# 保存修改后的工作簿
-book.save(output_path)
+# 保存目标工作簿
+wb2.save(filename=file2)
+print("数据迁移完成：已将符合条件的行前四列写入到盐雾实验记录.xlsx 的 A4:D4。")
