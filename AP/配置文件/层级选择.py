@@ -179,7 +179,19 @@ menu_structure = {
                     }
                 }
             }
-        }
+        },
+        "6": {
+            "label": "惠科",
+            "next_level": {
+                "title": "请选择惠科子类别：",
+                "options": {
+                    "1": {
+                        "label": "K65",
+                        "action": ("AP.配置文件.惠科.K65", "BnO_main_speaker_bass")
+                    }
+                }
+            }
+        },
     }
 }
 
