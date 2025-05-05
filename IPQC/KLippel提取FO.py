@@ -1,70 +1,74 @@
+import os
 import openpyxl
 
-# 打开源文件
-source_path = r'E:\System\download\4.19批次_KL主音箱扫频后测试_200PCS.xlsx'
+# --- 路径设置 与 验证 ---
+source_path = r'E:\System\pic\1.xlsx'
+if not os.path.exists(source_path):
+    raise FileNotFoundError(
+        f"未找到文件：{source_path}\n"
+        f"该目录下的文件列表为：{os.listdir(os.path.dirname(source_path))}"
+    )
+
+# --- 打开工作簿与工作表 ---
 wb = openpyxl.load_workbook(source_path)
 
-# 获取源数据工作表（默认第一个）
-ws_source = wb.active
+# 显式指定原始数据表名（请根据实际修改）
+src_sheet_name = '原始数据'
+if src_sheet_name not in wb.sheetnames:
+    raise ValueError(f"未找到名为 '{src_sheet_name}' 的工作表！")
+ws_source = wb[src_sheet_name]
 
-# 获取FO提取工作表
-if 'FO提取' in wb.sheetnames:
-    ws_fo = wb['FO提取']
+# 获取或新建 FO提取 表，并清空旧内容（可选）
+fo_name = 'FO提取'
+if fo_name in wb.sheetnames:
+    ws_fo = wb[fo_name]
+    for row in ws_fo.iter_rows():
+        for cell in row:
+            cell.value = None
 else:
-    raise ValueError("工作簿中没有找到名为 'FO提取' 的工作表！")
+    ws_fo = wb.create_sheet(title=fo_name)
 
-# 获取源文件最大列数和行数
+# 数据范围
 max_col = ws_source.max_column
 max_row = ws_source.max_row
 
-# 写入到FO提取工作表的起始位置
-write_row = 1
-write_col = 1
-count_in_col = 0
+write_row = 1  # 写入行，从第1行开始
 
 # 从第2列开始处理
 for col in range(2, max_col + 1):
     max_value = None
     candidate_rows = []
 
-    # 找到这一列的最大值，以及对应的行号列表
+    # 找最大值及对应行
     for row in range(1, max_row + 1):
-        cell_value = ws_source.cell(row=row, column=col).value
-        if isinstance(cell_value, (int, float)):
-            if (max_value is None) or (cell_value > max_value):
-                max_value = cell_value
-                candidate_rows = [row]  # 新的最大值，重置列表
-            elif cell_value == max_value:
-                candidate_rows.append(row)  # 相同最大值，加入列表
+        val = ws_source.cell(row=row, column=col).value
+        if isinstance(val, (int, float)):
+            if max_value is None or val > max_value:
+                max_value = val
+                candidate_rows = [row]
+            elif val == max_value:
+                candidate_rows.append(row)
 
-    if candidate_rows:
-        # 在candidate_rows中，找第一列最小的对应值
-        min_first_col_value = None
-        selected_row = None
+    if not candidate_rows:
+        continue
 
-        for row in candidate_rows:
-            first_col_value = ws_source.cell(row=row, column=1).value
-            if isinstance(first_col_value, (int, float)):
-                if (min_first_col_value is None) or (first_col_value < min_first_col_value):
-                    min_first_col_value = first_col_value
-                    selected_row = row
+    # 在这些行里，选第一列最小的那一行
+    min_first = None
+    sel_row = None
+    for r in candidate_rows:
+        first = ws_source.cell(row=r, column=1).value
+        if isinstance(first, (int, float)):
+            if min_first is None or first < min_first:
+                min_first = first
+                sel_row = r
 
-        if selected_row is not None:
-            corresponding_value = ws_source.cell(row=selected_row, column=1).value
+    if sel_row is None:
+        continue
 
-            # 写入到FO提取表
-            ws_fo.cell(row=write_row, column=write_col, value=corresponding_value)
-
-            write_row += 1
-            count_in_col += 1
-
-            # 写满72个后换列
-            if count_in_col >= 72:
-                write_col += 1
-                write_row = 1
-                count_in_col = 0
+    # 写入到 FO提取 的第1列
+    ws_fo.cell(row=write_row, column=1, value=min_first)
+    write_row += 1
 
 # 保存
 wb.save(source_path)
-
-print("处理完成！已经写入FO提取工作表！")
+print("处理完成！已将提取结果写入 'FO提取' 表的第一列。")
