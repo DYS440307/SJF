@@ -192,6 +192,18 @@ menu_structure = {
                 }
             }
         },
+         "7": {
+            "label": "当贝",
+            "next_level": {
+                "title": "请选择惠科子类别：",
+                "options": {
+                    "1": {
+                        "label": "C3G",
+                        "action": ("AP.配置文件.当贝.C3G", "BnO_main_speaker_bass")
+                    }
+                }
+            }
+        }
     }
 }
 
