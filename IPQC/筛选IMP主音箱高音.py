@@ -21,37 +21,24 @@ max_col = ws_imp.max_column
 # 记录需要删除的列索引
 cols_to_delete = []
 
-# 从最后一列向前遍历，避免删除列时索引变化
-for col in range(max_col, 1, -1):  # 从第2列开始
+# 从最后一列向前遍历（从第2列开始）
+for col in range(max_col, 1, -1):
     delete_flag = False
 
-    # 第2行到第93行要求值在0~40
-    for row in range(2, 94):
+    for row in range(2, 15):  # 第2行到第14行
         cell = ws_imp.cell(row=row, column=col)
         try:
             value = float(cell.value)
         except (TypeError, ValueError):
-            value = None
-        if value is not None and (value < 0 or value > 50):
+            continue
+        if value > 10:
             delete_flag = True
             break
-
-    # 若前段通过，再检查第83行到94行要求值在0~20
-    if not delete_flag:
-        for row in range(83, 90):
-            cell = ws_imp.cell(row=row, column=col)
-            try:
-                value = float(cell.value)
-            except (TypeError, ValueError):
-                value = None
-            if value is not None and (value < 0 or value > 50):
-                delete_flag = True
-                break
 
     if delete_flag:
         cols_to_delete.append(col)
 
-# 按记录顺序删除 IMP、Fund、THD 中的列（从后往前）
+# 删除 IMP、Fund、THD 中的对应列
 for col in cols_to_delete:
     ws_imp.delete_cols(col)
     ws_fund.delete_cols(col)
@@ -60,4 +47,4 @@ for col in cols_to_delete:
 
 # 保存文件
 wb.save(file_path)
-print("处理完成，已同步删除 IMP、Fund、THD 工作表中不符合条件的列。")
+print("处理完成，已删除 IMP、Fund、THD 工作表中第2行到第14行中存在值大于10的列。")
