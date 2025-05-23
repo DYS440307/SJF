@@ -1,50 +1,60 @@
 from openpyxl import load_workbook
 
-# 读取 Excel 文件
-file_path = r"E:\System\pic\1.xlsx"
+# 加载工作簿
+file_path = 'E:/System/pic/1.xlsx'
 wb = load_workbook(file_path)
 
-# 检查所需工作表是否都存在
-required_sheets = ["IMP", "Fund", "THD"]
-for sheet_name in required_sheets:
-    if sheet_name not in wb.sheetnames:
-        raise ValueError(f"未找到名为 '{sheet_name}' 的工作表")
+# 获取工作表
+imp_ws = wb['IMP']
+fund_ws = wb['Fund']
+thd_ws = wb['THD']
 
-# 获取目标工作表
-ws_imp = wb["IMP"]
-ws_fund = wb["Fund"]
-ws_thd = wb["THD"]
-
-# 获取 IMP 工作表的最大列数
-max_col = ws_imp.max_column
-
-# 记录需要删除的列索引
+# 存储需要删除的列（从第2列开始）
 cols_to_delete = []
 
-# 从最后一列向前遍历（从第2列开始）
-for col in range(max_col, 1, -1):
+# 从后往前遍历列（避免索引偏移）
+for col in range(imp_ws.max_column, 1, -1):
     delete_flag = False
 
-    for row in range(2, 15):  # 第2行到第14行
-        cell = ws_imp.cell(row=row, column=col)
-        try:
-            value = float(cell.value)
-        except (TypeError, ValueError):
-            continue
-        if value > 10:
+    # 条件1：第2~14行中是否有值 >10
+    for row in range(2, 15):
+        val = imp_ws.cell(row=row, column=col).value
+        if isinstance(val, (int, float)) and val > 10:
             delete_flag = True
             break
 
+    # 条件2：第14~110行是否有值 >50
+    if not delete_flag:
+        for row in range(14, 111):
+            val = imp_ws.cell(row=row, column=col).value
+            if isinstance(val, (int, float)) and val > 50:
+                delete_flag = True
+                break
+
+    # 条件3：第14~26行所有值都 <5
+    if not delete_flag:
+        all_less_than_5 = True
+        for row in range(14, 27):
+            val = imp_ws.cell(row=row, column=col).value
+            if not isinstance(val, (int, float)) or val >= 5:
+                all_less_than_5 = False
+                break
+        if all_less_than_5:
+            delete_flag = True
+
+    # 如果满足任何条件，就删除
     if delete_flag:
         cols_to_delete.append(col)
+        imp_ws.delete_cols(col)
 
-# 删除 IMP、Fund、THD 中的对应列
+# 在 Fund 和 THD 中删除相应列（从后往前）
+cols_to_delete.sort(reverse=True)
 for col in cols_to_delete:
-    ws_imp.delete_cols(col)
-    ws_fund.delete_cols(col)
-    ws_thd.delete_cols(col)
-    print(f"已删除第 {col} 列")
+    fund_ws.delete_cols(col)
+    thd_ws.delete_cols(col)
 
-# 保存文件
+# 输出信息
+print(f"总共删除了 {len(cols_to_delete)} 列。")
+
+# 保存修改
 wb.save(file_path)
-print("处理完成，已删除 IMP、Fund、THD 工作表中第2行到第14行中存在值大于10的列。")
