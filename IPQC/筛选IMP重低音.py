@@ -19,7 +19,7 @@ for col in range(max_col, 1, -1):  # 从第二列开始（即列索引>=2）
             value = float(cell.value)
         except (TypeError, ValueError):
             value = None
-        if value is not None and (value < 0 or value > 15):
+        if value is not None and (value < 0 or value > 40):
             delete_flag = True
             break  # 若发现不符合条件，立即标记该列为删除
 
@@ -31,7 +31,7 @@ for col in range(max_col, 1, -1):  # 从第二列开始（即列索引>=2）
                 value = float(cell.value)
             except (TypeError, ValueError):
                 value = None
-            if value is not None and (value < 0 or value > 10):
+            if value is not None and (value < 0 or value > 20):
                 delete_flag = True
                 break
 

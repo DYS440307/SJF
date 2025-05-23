@@ -12,14 +12,14 @@ max_col = ws.max_column
 for col in range(max_col, 1, -1):  # 从第二列开始（即列索引>=2），故range最后值为1
     delete_flag = False
     # 遍历第21行到第82行（Excel行号从1开始，包含82）
-    for row in range(21, 83):
+    for row in range(29, 52):
         cell = ws.cell(row=row, column=col)
         try:
             # 尝试将单元格值转换为浮点数进行比较
             value = float(cell.value)
         except (TypeError, ValueError):
             value = None
-        if value is not None and value > 50:
+        if value is not None and value > 10:
             delete_flag = True
             break  # 若发现一个单元格满足条件，则该列标记为删除
 
