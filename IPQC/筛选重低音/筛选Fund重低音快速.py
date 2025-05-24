@@ -3,47 +3,38 @@ import pandas as pd
 # Excel 文件路径
 file_path = 'E:/System/pic/1.xlsx'
 
-# 读取三个工作表（无表头）
-sheets = pd.read_excel(file_path, sheet_name=['IMP', 'Fund', 'THD'], header=None)
+# 读取三个工作表，无表头
+sheets = pd.read_excel(file_path, sheet_name=['THD', 'Fund', 'IMP'], header=None)
 
-# 提取各工作表
-df_imp = sheets['IMP']
-df_fund = sheets['Fund']
-df_thd = sheets['THD']
+# 提取 DataFrame
+df_thd, df_fund, df_imp = sheets['THD'], sheets['Fund'], sheets['IMP']
 
-# 要删除的列索引（从第2列开始，即索引为1）
-cols_to_drop = []
+# 提取要筛选的行范围（第22~100行，索引21~99），以及要判断的列范围（从第1列开始）
+data_to_check = df_thd.iloc[21:100, 1:]
 
-# 遍历每一列（从第2列开始）
-for col_idx in range(1, df_fund.shape[1]):
-    delete_flag = False  # 删除标志，默认不删除
+# ----------- 筛选逻辑开始（可修改） -----------
 
-    # 条件1：第17行（索引16）值小于60
-    if df_fund.iloc[16, col_idx] < 59:
-        delete_flag = True
+# 筛选条件：某列中是否存在大于35的值
+condition = data_to_check > 35
 
-        # 条件1：第17行（索引16）值小于60
-    if df_fund.iloc[24, col_idx] > 69:
-            delete_flag = True
+# 符合条件的列（布尔Series）：任意一行满足条件即为True
+columns_meeting_condition = condition.any()
 
+# 获取这些列的原始索引（因为data_to_check从第1列开始，要加1）
+cols_to_drop = (columns_meeting_condition[columns_meeting_condition].index + 1).tolist()
 
-    # 条件2：第23~27行（索引22~26）中有任意值小于60
-    if (df_fund.iloc[22:27, col_idx] < 60).any():
-        delete_flag = True
+# ----------- 筛选逻辑结束 -----------
 
-    # 如果满足任一条件，则标记删除
-    if delete_flag:
-        cols_to_drop.append(col_idx)
-
-# 删除列
-df_imp.drop(columns=cols_to_drop, inplace=True)
-df_fund.drop(columns=cols_to_drop, inplace=True)
+# 删除对应列
 df_thd.drop(columns=cols_to_drop, inplace=True)
+df_fund.drop(columns=cols_to_drop, inplace=True)
+df_imp.drop(columns=cols_to_drop, inplace=True)
 
-# 写入原 Excel 文件（覆盖保存）
+# 保存到原文件
 with pd.ExcelWriter(file_path, engine='openpyxl', mode='w') as writer:
-    df_imp.to_excel(writer, sheet_name='IMP', header=False, index=False)
-    df_fund.to_excel(writer, sheet_name='Fund', header=False, index=False)
     df_thd.to_excel(writer, sheet_name='THD', header=False, index=False)
+    df_fund.to_excel(writer, sheet_name='Fund', header=False, index=False)
+    df_imp.to_excel(writer, sheet_name='IMP', header=False, index=False)
 
-print(f"总共删除了 {len(cols_to_drop)} 列。")
+# 输出删除列数量
+print(f"THD 工作表中删除的列数：{len(cols_to_drop)}")
