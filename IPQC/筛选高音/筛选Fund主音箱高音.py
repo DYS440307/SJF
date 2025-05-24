@@ -13,8 +13,8 @@ thd_df = sheets['THD']
 cols_to_delete = []
 
 for col in range(1, fund_df.shape[1]):
-    val = fund_df.iloc[47, col]
-    if pd.notna(val) and isinstance(val, (int, float)) and val < 72:
+    val = fund_df.iloc[48, col]
+    if pd.notna(val) and isinstance(val, (int, float)) and val < 50:
         cols_to_delete.append(col)
 
 # 删除列

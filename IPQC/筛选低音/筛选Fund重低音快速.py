@@ -21,7 +21,7 @@ def get_drop_cols(row_idx, condition_fn, df):
 # 获取所有需删除的列索引
 drop_cols = set()
 
-drop_cols.update(get_drop_cols(49, lambda x: x < 70, df_fund))   # 第23行 <60
+drop_cols.update(get_drop_cols(46, lambda x: x < 70, df_fund))   # 第23行 <60
 # drop_cols.update(get_drop_cols(23, lambda x: x < 65, df_fund))   # 第24行 <65
 # drop_cols.update(get_drop_cols(23, lambda x: x > 68, df_fund))   # 第24行 >68
 # drop_cols.update(get_drop_cols(17, lambda x: x < 61, df_fund))   # 第18行 <61

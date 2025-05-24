@@ -9,28 +9,36 @@ sheets = pd.read_excel(file_path, sheet_name=['THD', 'Fund', 'IMP'], header=None
 # 提取 DataFrame
 df_thd, df_fund, df_imp = sheets['THD'], sheets['Fund'], sheets['IMP']
 
-# 行范围：第55~82行（索引54~82），列范围：第2列开始（索引1开始）
-data_to_check = df_thd.iloc[54:83, 1:]
+# 设置检查范围：第55~82行（索引54~82），第2列开始（索引1开始）
+row_start, row_end = 57, 75  # iloc 切片末尾不包含
+col_start = 1
 
-# 条件：是否存在大于10的值
-condition = data_to_check > 10
+# 获取对应数据范围
+data_to_check = df_thd.iloc[row_start:row_end, col_start:]
 
-# 获取满足条件的列索引（原始列索引）
-cols_to_drop = (condition.any()).loc[lambda x: x].index + 1  # 加1是因为从第2列开始
+# 条件：是否存在大于20
+condition = data_to_check > 20
 
-# 转成列表
-cols_to_drop = cols_to_drop.tolist()
+# 找出满足条件的列索引（注意偏移）
+cols_to_drop = (condition.any()).loc[lambda x: x].index + col_start
 
-# 删除对应列
+# 转为列表并去重排序
+cols_to_drop = sorted(set(cols_to_drop.tolist()))
+
+# 安全过滤，防止越界
+max_col = df_thd.shape[1] - 1
+cols_to_drop = [col for col in cols_to_drop if col <= max_col]
+
+# 执行删除
 df_thd.drop(columns=cols_to_drop, inplace=True)
 df_fund.drop(columns=cols_to_drop, inplace=True)
 df_imp.drop(columns=cols_to_drop, inplace=True)
 
-# 保存到原文件
+# 保存修改
 with pd.ExcelWriter(file_path, engine='openpyxl', mode='w') as writer:
     df_thd.to_excel(writer, sheet_name='THD', header=False, index=False)
     df_fund.to_excel(writer, sheet_name='Fund', header=False, index=False)
     df_imp.to_excel(writer, sheet_name='IMP', header=False, index=False)
 
-# 输出删除列数量
-print(f"THD 工作表中删除的列数：{len(cols_to_drop)}")
+# 输出信息
+print(f"从 THD 第{row_start+1}~{row_end}行中删除大于20的列，共删除 {len(cols_to_drop)} 列。")
