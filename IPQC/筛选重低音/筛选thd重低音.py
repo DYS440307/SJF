@@ -1,40 +1,35 @@
-from openpyxl import load_workbook
+import pandas as pd
 
-# 加载工作簿
-file_path = r"E:\System\pic\1.xlsx"
-wb = load_workbook(file_path)
+# Excel 文件路径
+file_path = 'E:/System/pic/1.xlsx'
 
-# 获取工作表
-ws_thd = wb["THD"]
-ws_fund = wb["Fund"]
-ws_imp = wb["IMP"]
+# 读取3个工作表（无表头）
+sheets = pd.read_excel(file_path, sheet_name=['THD', 'Fund', 'IMP'], header=None)
 
-# 初始化列索引（从第2列开始）和删除计数
-col = 2
-deleted_count = 0
+# 提取为 DataFrame
+df_thd = sheets['THD']
+df_fund = sheets['Fund']
+df_imp = sheets['IMP']
 
-# 注意：删除列时，后续列的索引会向前移动，所以处理时不应该预先增加 col
-while col <= ws_thd.max_column:
-    delete_flag = False
-    # 检查第22~100行该列是否有值大于35
-    for row in range(22, 101):
-        cell_value = ws_thd.cell(row=row, column=col).value
-        if isinstance(cell_value, (int, float)) and cell_value > 35:
-            delete_flag = True
-            break
+# 初始化待删除列列表（从第2列开始，即索引1）
+cols_to_drop = []
 
-    if delete_flag:
-        # 删除 THD, Fund, IMP 中的对应列
-        ws_thd.delete_cols(col)
-        ws_fund.delete_cols(col)
-        ws_imp.delete_cols(col)
-        deleted_count += 1
-        # 删除后当前列变成新的列，不递增
-    else:
-        col += 1
+# 遍历列索引
+for col_idx in range(1, df_thd.shape[1]):
+    col_values = df_thd.iloc[21:100, col_idx]  # 第22~100行（索引21~99）
+    if (col_values > 35).any():
+        cols_to_drop.append(col_idx)
 
-# 保存工作簿
-wb.save(file_path)
+# 执行删除
+df_thd.drop(columns=cols_to_drop, inplace=True)
+df_fund.drop(columns=cols_to_drop, inplace=True)
+df_imp.drop(columns=cols_to_drop, inplace=True)
 
-# 输出结果
-print(f"THD 工作表中删除的列数：{deleted_count}")
+# 保存回原文件
+with pd.ExcelWriter(file_path, engine='openpyxl', mode='w') as writer:
+    df_thd.to_excel(writer, sheet_name='THD', header=False, index=False)
+    df_fund.to_excel(writer, sheet_name='Fund', header=False, index=False)
+    df_imp.to_excel(writer, sheet_name='IMP', header=False, index=False)
+
+# 输出删除列数量
+print(f"THD 工作表中删除的列数：{len(cols_to_drop)}")

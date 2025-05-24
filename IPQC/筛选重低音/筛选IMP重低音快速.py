@@ -30,6 +30,16 @@ for col in range(1, imp_df.shape[1]):
         cols_to_delete.append(col)
         continue
 
+        # 条件2b：第15~27行有值 < 5
+    if (col_values.iloc[2:110] > 40).any():
+            cols_to_delete.append(col)
+            continue
+
+        # 条件2b：第15~27行有值 < 5
+    if (col_values.iloc[99:112] > 30).any():
+            cols_to_delete.append(col)
+            continue
+
 # 删除列
 imp_df.drop(columns=cols_to_delete, inplace=True)
 fund_df.drop(columns=cols_to_delete, inplace=True)
