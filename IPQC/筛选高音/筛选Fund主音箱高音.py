@@ -18,7 +18,7 @@ def should_delete_column(col_values: pd.Series) -> bool:
     numeric_values = pd.to_numeric(col_values, errors='coerce')
 
     # 条件1：首行有值，且第2~94行有空值（索引0有值，索引1-93中有空）
-    if pd.notna(col_values.iloc[0]) and col_values.iloc[1:94].isna().any():
+    if pd.notna(col_values.iloc[0]) and col_values.iloc[1:93].isna().any():
         return True
 
     # 条件2：第1~94行中任一值 > 9
