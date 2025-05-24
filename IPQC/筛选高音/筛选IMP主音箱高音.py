@@ -16,31 +16,41 @@ cols_to_delete = []
 for col in range(imp_ws.max_column, 1, -1):
     delete_flag = False
 
-    # 条件1：第2~14行中是否有值 >10
-    for row in range(2, 15):
+    # 条件1：第2~14行中是否有值 >7
+    for row in range(2, 43):
         val = imp_ws.cell(row=row, column=col).value
-        if isinstance(val, (int, float)) and val > 10:
+        if isinstance(val, (int, float)) and val > 7:
+            delete_flag = True
+            break
+    # 条件1：第2~14行中是否有值 >7
+    for row in range(62, 75):
+        val = imp_ws.cell(row=row, column=col).value
+        if isinstance(val, (int, float)) and val > 6.3:
             delete_flag = True
             break
 
-    # 条件2：第14~110行是否有值 >50
-    if not delete_flag:
-        for row in range(14, 111):
+        # 条件1：第2~14行中是否有值 >7
+        for row in range(22, 38):
             val = imp_ws.cell(row=row, column=col).value
-            if isinstance(val, (int, float)) and val > 50:
+            if isinstance(val, (int, float)) and val >6:
                 delete_flag = True
                 break
 
-    # 条件3：第14~26行所有值都 <5
+            # 条件1：第2~14行中是否有值 >7
+            for row in range(22, 38):
+                val = imp_ws.cell(row=row, column=col).value
+                if isinstance(val, (int, float)) and val < 5.55:
+                    delete_flag = True
+                    break
+
+
+    # 条件2：第14~110行是否有值 >50
     if not delete_flag:
-        all_less_than_5 = True
-        for row in range(14, 27):
+        for row in range(2, 94):
             val = imp_ws.cell(row=row, column=col).value
-            if not isinstance(val, (int, float)) or val >= 5:
-                all_less_than_5 = False
+            if isinstance(val, (int, float)) and val > 10:
+                delete_flag = True
                 break
-        if all_less_than_5:
-            delete_flag = True
 
     # 如果满足任何条件，就删除
     if delete_flag:

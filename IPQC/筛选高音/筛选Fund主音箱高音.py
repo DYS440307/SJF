@@ -12,8 +12,8 @@ imp_ws = wb["IMP"]
 # 找出需要删除的列索引（从第2列开始）
 cols_to_delete = []
 for col in range(2, fund_ws.max_column + 1):
-    cell_value = fund_ws.cell(row=50, column=col).value
-    if isinstance(cell_value, (int, float)) and cell_value < 66:
+    cell_value = fund_ws.cell(row=48, column=col).value
+    if isinstance(cell_value, (int, float)) and cell_value < 72:
         cols_to_delete.append(col)
 
 # 删除列时要从后往前删，防止索引错乱

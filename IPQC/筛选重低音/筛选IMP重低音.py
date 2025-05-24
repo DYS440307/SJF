@@ -1,44 +1,60 @@
 from openpyxl import load_workbook
 
-# 读取 Excel 文件
-file_path = r"E:\System\pic\1.xlsx"
+# 加载工作簿
+file_path = 'E:/System/pic/1.xlsx'
 wb = load_workbook(file_path)
-ws = wb.active  # 默认操作第一个工作表
 
-# 获取当前工作表的最大列数
-max_col = ws.max_column
+# 获取工作表
+imp_ws = wb['IMP']
+fund_ws = wb['Fund']
+thd_ws = wb['THD']
 
-# 为了避免删除列时导致后续列索引发生变化，从最后一列向前遍历
-for col in range(max_col, 1, -1):  # 从第二列开始（即列索引>=2）
+# 存储需要删除的列（从第2列开始）
+cols_to_delete = []
+
+# 从后往前遍历列（避免索引偏移）
+for col in range(imp_ws.max_column, 1, -1):
     delete_flag = False
 
-    # 判断第2行到第82行，要求数值在0~15之间
-    for row in range(2, 94):  # 包含第82行
-        cell = ws.cell(row=row, column=col)
-        try:
-            value = float(cell.value)
-        except (TypeError, ValueError):
-            value = None
-        if value is not None and (value < 0 or value > 40):
+    # 条件1：第2~14行中是否有值 >10
+    for row in range(2, 15):
+        val = imp_ws.cell(row=row, column=col).value
+        if isinstance(val, (int, float)) and val > 10:
             delete_flag = True
-            break  # 若发现不符合条件，立即标记该列为删除
+            break
 
-    # 若前面的行未标记删除，再判断第83行到第94行，要求数值在0~10之间
+    # 条件2：第14~110行是否有值 >50
     if not delete_flag:
-        for row in range(83, 95):  # 包含第94行
-            cell = ws.cell(row=row, column=col)
-            try:
-                value = float(cell.value)
-            except (TypeError, ValueError):
-                value = None
-            if value is not None and (value < 0 or value > 20):
+        for row in range(14, 111):
+            val = imp_ws.cell(row=row, column=col).value
+            if isinstance(val, (int, float)) and val > 50:
                 delete_flag = True
                 break
 
-    if delete_flag:
-        ws.delete_cols(col)
-        print(f"已删除第 {col} 列")
+    # 条件3：第14~26行所有值都 <5
+    if not delete_flag:
+        all_less_than_5 = True
+        for row in range(14, 27):
+            val = imp_ws.cell(row=row, column=col).value
+            if not isinstance(val, (int, float)) or val >= 5:
+                all_less_than_5 = False
+                break
+        if all_less_than_5:
+            delete_flag = True
 
-# 保存工作簿
+    # 如果满足任何条件，就删除
+    if delete_flag:
+        cols_to_delete.append(col)
+        imp_ws.delete_cols(col)
+
+# 在 Fund 和 THD 中删除相应列（从后往前）
+cols_to_delete.sort(reverse=True)
+for col in cols_to_delete:
+    fund_ws.delete_cols(col)
+    thd_ws.delete_cols(col)
+
+# 输出信息
+print(f"总共删除了 {len(cols_to_delete)} 列。")
+
+# 保存修改
 wb.save(file_path)
-print("处理完成，已删除不符合条件的列组。")

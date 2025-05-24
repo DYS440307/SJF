@@ -1,32 +1,29 @@
 from openpyxl import load_workbook
 
-# 读取 Excel 文件
+# 加载工作簿
 file_path = r"E:\System\pic\1.xlsx"
 wb = load_workbook(file_path)
-ws = wb.active  # 默认操作第一个工作表
 
-# 获取当前工作表的最大列数
-max_col = ws.max_column
+# 读取工作表
+fund_ws = wb["Fund"]
+thd_ws = wb["THD"]
+imp_ws = wb["IMP"]
 
-# 为了避免删除列时导致后续列索引发生变化，从最后一列向前遍历
-for col in range(max_col, 1, -1):  # 从第二列开始（即列索引>=2），故range最后值为1
-    delete_flag = False
-    # 遍历第2行到第82行（Excel行号从1开始，包含82）
-    for row in range(2, 94):
-        cell = ws.cell(row=row, column=col)
-        try:
-            # 尝试将单元格值转换为浮点数进行比较
-            value = float(cell.value)
-        except (TypeError, ValueError):
-            value = None
-        if value is not None and (value < 40 or value > 100):
-            delete_flag = True
-            break  # 若发现一个单元格满足条件，则该列标记为删除
+# 找出需要删除的列索引（从第2列开始）
+cols_to_delete = []
+for col in range(2, fund_ws.max_column + 1):
+    cell_value = fund_ws.cell(row=50, column=col).value
+    if isinstance(cell_value, (int, float)) and cell_value < 66:
+        cols_to_delete.append(col)
 
-    if delete_flag:
-        ws.delete_cols(col)
-        print(f"已删除第 {col} 列")
+# 删除列时要从后往前删，防止索引错乱
+for col in reversed(cols_to_delete):
+    fund_ws.delete_cols(col)
+    thd_ws.delete_cols(col)
+    imp_ws.delete_cols(col)
 
-# 保存工作簿
+# 输出删除的列数
+print(f"已从Fund中删除了 {len(cols_to_delete)} 列")
+
+# 保存修改
 wb.save(file_path)
-print("处理完成，已删除不符合条件的列组。")
