@@ -3,40 +3,46 @@ import pandas as pd
 # 文件路径
 file_path = 'E:/System/pic/1.xlsx'
 
-# 读取三张工作表
+# 读取三张工作表（无表头）
 sheets = pd.read_excel(file_path, sheet_name=['IMP', 'Fund', 'THD'], header=None)
 imp_df = sheets['IMP']
 fund_df = sheets['Fund']
 thd_df = sheets['THD']
 
+# 用于判断某列是否应删除的函数
+def should_delete_column(col_values: pd.Series) -> bool:
+    """
+    判断该列是否应删除，满足任一条件即返回 True
+    """
+    # 条件1（新增）：首行有值，且第2~94行有空值
+    if pd.notna(col_values.iloc[0]) and col_values.iloc[0:93].isna().any():
+        return True
+    # 条件2：
+    if (pd.to_numeric(col_values.iloc[0:94], errors='coerce') > 9).any():
+        return True
+    # 条件3：
+    if (pd.to_numeric(col_values.iloc[63:66], errors='coerce') > 6.1).any():
+        return True
+    # 条件4：
+    if (pd.to_numeric(col_values.iloc[45:47], errors='coerce') < 6.1).any():
+        return True
+    # 条件5：
+    if (pd.to_numeric(col_values.iloc[36:39], errors='coerce') < 5.78).any():
+        return True
+    # 条件6：
+    if (pd.to_numeric(col_values.iloc[0:10], errors='coerce') > 5.9 ).any():
+            return True
+
+
+    return False
+
 # 存储需要删除的列索引（从第2列开始）
 cols_to_delete = []
 
-for col in range(1, imp_df.shape[1]):  # 从第2列开始，index = 1
-    delete_flag = False
+# 遍历各列判断是否满足删除条件
+for col in range(1, imp_df.shape[1]):  # index=1 起，第2列
     col_values = imp_df.iloc[:, col]
-
-    # 条件1：第2~42行（Excel第2~43行）有值 > 7
-    if (col_values.iloc[1:43] > 7).any():
-        delete_flag = True
-
-    # 条件2：第62~74行有值 > 6.3
-    elif (col_values.iloc[61:74] > 6.3).any():
-        delete_flag = True
-
-    # 条件3a：第22~37行有值 > 6
-    elif (col_values.iloc[21:37] > 6).any():
-        delete_flag = True
-
-    # 条件3b：第22~37行有值 < 5.55
-    elif (col_values.iloc[21:37] < 5.55).any():
-        delete_flag = True
-
-    # 条件4：第2~93行（即索引1~93）中有值 > 10
-    elif (col_values.iloc[1:94] > 10).any():
-        delete_flag = True
-
-    if delete_flag:
+    if should_delete_column(col_values):
         cols_to_delete.append(col)
 
 # 删除对应列
@@ -44,11 +50,12 @@ imp_df.drop(columns=cols_to_delete, inplace=True)
 fund_df.drop(columns=cols_to_delete, inplace=True)
 thd_df.drop(columns=cols_to_delete, inplace=True)
 
-# 写入原文件
+# 写入原 Excel 文件
 with pd.ExcelWriter(file_path, engine='openpyxl', mode='w') as writer:
     imp_df.to_excel(writer, sheet_name='IMP', header=False, index=False)
     fund_df.to_excel(writer, sheet_name='Fund', header=False, index=False)
     thd_df.to_excel(writer, sheet_name='THD', header=False, index=False)
 
-# 输出删除列数
+# 输出信息
+print(f"删除列索引：{cols_to_delete}")
 print(f"总共删除了 {len(cols_to_delete)} 列。")
