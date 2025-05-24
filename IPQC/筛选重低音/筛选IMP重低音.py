@@ -30,17 +30,23 @@ for col in range(imp_ws.max_column, 1, -1):
             if isinstance(val, (int, float)) and val > 10:
                 delete_flag = True
                 break
-
-    # 条件3：第14~26行所有值都 <5
+    # 条件2：第14~110行是否有值 >50
     if not delete_flag:
-        all_less_than_5 = True
         for row in range(15, 28):
             val = imp_ws.cell(row=row, column=col).value
-            if not isinstance(val, (int, float)) or val >= 5:
-                all_less_than_5 = False
+            if isinstance(val, (int, float)) and val < 5:
+                delete_flag = True
                 break
-        if all_less_than_5:
-            delete_flag = True
+    # # 条件3：第14~26行所有值都 <5
+    # if not delete_flag:
+    #     all_less_than_5 = True
+    #     for row in range(15, 28):
+    #         val = imp_ws.cell(row=row, column=col).value
+    #         if not isinstance(val, (int, float)) or val >= 5:
+    #             all_less_than_5 = False
+    #             break
+    #     if all_less_than_5:
+    #         delete_flag = True
 
     # 如果满足任何条件，就删除
     if delete_flag:
