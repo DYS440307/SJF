@@ -1,40 +1,33 @@
-from openpyxl import load_workbook
+import pandas as pd
 
-# 加载工作簿
-file_path = r"E:\System\pic\1.xlsx"
-wb = load_workbook(file_path)
+# 文件路径
+file_path = r"E:/System/pic/1.xlsx"
 
-# 获取工作表
-ws_thd = wb["THD"]
-ws_fund = wb["Fund"]
-ws_imp = wb["IMP"]
+# 读取三个工作表
+sheets = pd.read_excel(file_path, sheet_name=['IMP', 'Fund', 'THD'], header=None)
+imp_df = sheets['IMP']
+fund_df = sheets['Fund']
+thd_df = sheets['THD']
 
-# 初始化列索引（从第2列开始）和删除计数
-col = 2
-deleted_count = 0
+# 初始化要删除的列索引列表
+cols_to_delete = []
 
-# 注意：删除列时，后续列的索引会向前移动，所以处理时不应该预先增加 col
-while col <= ws_thd.max_column:
-    delete_flag = False
-    # 检查第22~100行该列是否有值大于35
-    for row in range(55, 83):
-        cell_value = ws_thd.cell(row=row, column=col).value
-        if isinstance(cell_value, (int, float)) and cell_value > 10:
-            delete_flag = True
-            break
+# 从第2列开始检查（索引为1开始）
+for col in range(1, thd_df.shape[1]):
+    col_values = thd_df.iloc[54:82, col]  # 对应 Excel 中第55~82行
+    if (col_values > 10).any():
+        cols_to_delete.append(col)
 
-    if delete_flag:
-        # 删除 THD, Fund, IMP 中的对应列
-        ws_thd.delete_cols(col)
-        ws_fund.delete_cols(col)
-        ws_imp.delete_cols(col)
-        deleted_count += 1
-        # 删除后当前列变成新的列，不递增
-    else:
-        col += 1
+# 删除对应列
+imp_df.drop(columns=cols_to_delete, inplace=True)
+fund_df.drop(columns=cols_to_delete, inplace=True)
+thd_df.drop(columns=cols_to_delete, inplace=True)
 
-# 保存工作簿
-wb.save(file_path)
+# 保存到原 Excel 文件中
+with pd.ExcelWriter(file_path, engine='openpyxl', mode='w') as writer:
+    imp_df.to_excel(writer, sheet_name='IMP', header=False, index=False)
+    fund_df.to_excel(writer, sheet_name='Fund', header=False, index=False)
+    thd_df.to_excel(writer, sheet_name='THD', header=False, index=False)
 
-# 输出结果
-print(f"THD 工作表中删除的列数：{deleted_count}")
+# 输出删除信息
+print(f"THD 工作表中删除的列数：{len(cols_to_delete)}")
