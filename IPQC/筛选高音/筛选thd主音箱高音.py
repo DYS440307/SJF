@@ -25,6 +25,9 @@ def should_delete_column(thd_column: pd.Series) -> bool:
     # 条件2：第55~82行（索引54~81）任意值 > 10
     if (thd_numeric.iloc[54:82] > 10).any():
         return True
+    # 条件3
+    if (thd_numeric.iloc[16:81] > 40).any():
+        return True
 
     return False
 
