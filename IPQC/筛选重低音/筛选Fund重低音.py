@@ -17,20 +17,16 @@ def should_delete_column(col_values: pd.Series) -> bool:
     2. 第51~54行中存在小于85的值；
     """
     numeric_values = pd.to_numeric(col_values, errors='coerce')
-
-    # 条件1：第1行有值，且第2~94行有空值
-    if pd.notna(col_values.iloc[0]) and col_values.iloc[1:94].isna().any():
-        return True
-
-    # 条件2：第51~54行中任意值小于 85
-    if (numeric_values.iloc[14:17] < 60).any():
-        return True
-    if (numeric_values.iloc[19:25] < 60).any():
-        return True
-    if (numeric_values.iloc[10:12] > 58).any():
-        return True
-
-    return False
+    #
+    # # 条件1：第1行有值，且第2~94行有空值
+    # if pd.notna(col_values.iloc[0]) and col_values.iloc[1:94].isna().any():
+    #     return True
+    #
+    # # 条件2：第51~54行中任意值小于 85
+    # if (numeric_values.iloc[50:54] < 85).any():
+    #     return True
+    #
+    # return False
 
 # 查找不合格列（从第2列开始）
 cols_to_delete = []

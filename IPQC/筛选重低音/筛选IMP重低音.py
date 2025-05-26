@@ -11,21 +11,20 @@ thd_df = sheets['THD']
 
 # 用于判断某列是否应删除的函数
 def should_delete_column(col_values: pd.Series) -> bool:
-
+    """
+    判断该列是否应删除，满足任一条件即返回 True：
+    1. 第1行有值，且第2~94行有空值；
+    2. 第1~94行中有任意值 > 9；
+    3. 第64~66行有值 > 6.1；
+    4. 第46~47行有值 < 6.1；
+    5. 第37~39行有值 < 5.78；
+    6. 第1~10行有值 > 5.9；
+    """
     if pd.notna(col_values.iloc[0]) and col_values.iloc[1:94].isna().any():
         return True
-    if (pd.to_numeric(col_values.iloc[0:13], errors='coerce') > 9).any():
+    if (pd.to_numeric(col_values.iloc[0:121], errors='coerce') > 150).any():
         return True
-    if (pd.to_numeric(col_values.iloc[32:68], errors='coerce') >10).any():
-        return True
-    if (pd.to_numeric(col_values.iloc[84:97], errors='coerce') > 20).any():
-        return True
-    if (pd.to_numeric(col_values.iloc[0:109], errors='coerce') > 40).any():
-        return True
-    if (pd.to_numeric(col_values.iloc[23:24], errors='coerce') < 15).any():
-        return True
-    if (pd.to_numeric(col_values.iloc[116:118], errors='coerce') > 50).any():
-        return True
+
     return False
 
 # 存储需要删除的列索引（从第2列开始）
