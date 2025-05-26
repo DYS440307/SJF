@@ -1,7 +1,7 @@
 from openpyxl import load_workbook
 
 # 加载工作簿
-file_path = r"E:\System\pic\全\中音\原档筛选_重复项核查_300PCS_副本.xlsx"
+file_path = r"E:\System\pic\全\中音\原档筛选_重复项核查_300PCS.xlsx"
 wb = load_workbook(file_path)
 
 # 获取工作表列表
