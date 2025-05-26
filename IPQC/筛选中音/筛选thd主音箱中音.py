@@ -1,7 +1,7 @@
 import pandas as pd
 
 # 文件路径
-file_path = r"E:/System/pic/1.xlsx"
+file_path = r"E:\System\pic\全\中音\筛选.xlsx"
 
 # 读取三个工作表（无表头）
 sheets = pd.read_excel(file_path, sheet_name=['IMP', 'Fund', 'THD'], header=None)
@@ -24,7 +24,9 @@ def should_delete_column(thd_column: pd.Series) -> bool:
         return True
 
     # 条件2：第55~82行（索引54~81）任意值 > 10
-    if (thd_numeric.iloc[56:74] > 16).any():
+    if (thd_numeric.iloc[0:46] > 10).any():
+        return True
+    if (thd_numeric.iloc[0:74] > 25).any():
         return True
 
     return False

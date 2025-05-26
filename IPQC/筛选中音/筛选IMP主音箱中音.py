@@ -1,7 +1,7 @@
 import pandas as pd
 
 # 文件路径
-file_path = 'E:/System/pic/高音.xlsx'
+file_path = 'E:\System\pic\全\中音\筛选.xlsx'
 
 # 读取三张工作表（无表头）
 sheets = pd.read_excel(file_path, sheet_name=['IMP', 'Fund', 'THD'], header=None)
@@ -21,7 +21,7 @@ def should_delete_column(col_values: pd.Series) -> bool:
     if (pd.to_numeric(col_values.iloc[0:93], errors='coerce') > 17).any():
         return True
     # 条件3：
-    if (pd.to_numeric(col_values.iloc[45:49], errors='coerce') < 11).any():
+    if (pd.to_numeric(col_values.iloc[81:93], errors='coerce') > 10).any():
         return True
     return False
 
