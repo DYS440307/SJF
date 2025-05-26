@@ -1,7 +1,7 @@
 import pandas as pd
 
 # 文件路径
-file_path = 'E:/System/pic/1.xlsx'
+file_path = 'E:/System/pic/高音.xlsx'
 
 # 读取三张工作表（无表头）
 sheets = pd.read_excel(file_path, sheet_name=['IMP', 'Fund', 'THD'], header=None)
@@ -27,31 +27,27 @@ def should_delete_column(col_values: pd.Series) -> bool:
 
 # 存储需要删除的列索引（从第2列开始）
 cols_to_delete = []
-
-# 遍历各列判断是否满足删除条件
-for col in range(1, imp_df.shape[1]):  # index=1 起，第2列
-    col_values = imp_df.iloc[:, col]
-    if should_delete_column(col_values):
+for col in range(1, imp_df.shape[1]):
+    if should_delete_column(imp_df.iloc[:, col]):
         cols_to_delete.append(col)
-# 第二步：查找并删除 IMP 中重复的列
-# ====================
-# 将已有数据列转换为字符串用于比较
+
+# 查找重复列（整列值一致）
 duplicate_cols = []
 seen = {}
-
 for col in range(imp_df.shape[1]):
-    col_tuple = tuple(imp_df.iloc[:, col].fillna('').astype(str))  # 转为元组保证可哈希
+    col_tuple = tuple(imp_df.iloc[:, col].fillna('').astype(str))
     if col_tuple in seen:
-        duplicate_cols.append(col)  # 当前列是重复的，标记删除
+        duplicate_cols.append(col)
     else:
         seen[col_tuple] = col
 
-# 合并所有需要删除的列索引（去重并排序，防止多次删除同一列）
+# 合并并去重排序所有待删除列
 all_cols_to_delete = sorted(set(cols_to_delete + duplicate_cols))
+
 # 删除对应列
-imp_df.drop(columns=cols_to_delete, inplace=True)
-fund_df.drop(columns=cols_to_delete, inplace=True)
-thd_df.drop(columns=cols_to_delete, inplace=True)
+imp_df.drop(columns=all_cols_to_delete, inplace=True)
+fund_df.drop(columns=all_cols_to_delete, inplace=True)
+thd_df.drop(columns=all_cols_to_delete, inplace=True)
 
 # 写入原 Excel 文件
 with pd.ExcelWriter(file_path, engine='openpyxl', mode='w') as writer:
@@ -59,7 +55,7 @@ with pd.ExcelWriter(file_path, engine='openpyxl', mode='w') as writer:
     fund_df.to_excel(writer, sheet_name='Fund', header=False, index=False)
     thd_df.to_excel(writer, sheet_name='THD', header=False, index=False)
 
-# ===== 输出信息 =====
+# 输出信息
 print(f"符合条件删除列数：{len(cols_to_delete)}")
 print(f"重复列删除列数：{len(duplicate_cols)}")
 print(f"总共删除列数：{len(all_cols_to_delete)}，列索引为：{all_cols_to_delete}")

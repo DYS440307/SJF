@@ -1,7 +1,7 @@
 import pandas as pd
 
 # 文件路径
-file_path = r"E:/System/pic/高音.xlsx"
+file_path = 'E:\System\pic\全\高音\原档筛选.xlsx'
 
 # 读取 Excel 文件的 3 个工作表
 sheets = pd.read_excel(file_path, sheet_name=['IMP', 'Fund', 'THD'], header=None)
