@@ -116,7 +116,10 @@ menu_structure = {
                         "label": "TJF2",
                         "action": ("AP.配置文件.TCL.TJF2", "BnO_main_speaker_bass")
                     },
-
+                    "11": {
+                        "label": "225",
+                        "action": ("AP.配置文件.TCL.G0202-000225", "BnO_main_speaker_bass")
+                    }
                 }
             }
         },
@@ -180,6 +183,10 @@ menu_structure = {
                     "1": {
                         "label": "375&376",
                         "action": ("AP.配置文件.海信.375&376", "BnO_main_speaker_bass")
+                    },
+                    "2": {
+                        "label": "124&125",
+                        "action": ("AP.配置文件.海信.124&125", "BnO_main_speaker_bass")
                     }
                 }
             }
