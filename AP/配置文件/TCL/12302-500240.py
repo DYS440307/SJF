@@ -16,12 +16,12 @@ SPL3 = 1500
 SPL4 = 2000
 
 THD1 = 200
-THD2 = 20000
+THD2 = 10000
 
 def BnO_main_speaker_bass():
     Fb_nominal = 140 # 低音箱体的调谐频率 (Hz)
     ACR_nominal = 6  # 音响的ACR值
-    SPL_nominal = 73  # 音响的声压级 (dB)
+    SPL_nominal = 75  # 音响的声压级 (dB)
     THD_nominal = 7  # 总谐波失真 (百分比)
     B9 = "Fb(Hz)"
 
