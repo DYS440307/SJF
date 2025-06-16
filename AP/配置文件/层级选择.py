@@ -119,6 +119,10 @@ menu_structure = {
                     "11": {
                         "label": "225",
                         "action": ("AP.配置文件.TCL.G0202-000225", "BnO_main_speaker_bass")
+                    },
+                    "12": {
+                        "label": "G0202-000254",
+                        "action": ("AP.配置文件.TCL.G0202-000254", "BnO_main_speaker_bass")
                     }
                 }
             }
@@ -211,6 +215,30 @@ menu_structure = {
                     "1": {
                         "label": "C3G",
                         "action": ("AP.配置文件.当贝.C3G", "BnO_main_speaker_bass")
+                    }
+                }
+            }
+        },
+        "8": {
+            "label": "稻兴",
+            "next_level": {
+                "title": "请选择稻兴子类别：",
+                "options": {
+                    "1": {
+                        "label": "SY45180B6-09-X1",
+                        "action": ("AP.配置文件.稻兴.SY45180B6-09-X1", "BnO_main_speaker_bass")
+                    }
+                }
+            }
+        },
+        "9": {
+            "label": "康冠",
+            "next_level": {
+                "title": "请选择稻兴子类别：",
+                "options": {
+                    "1": {
+                        "label": "20W",
+                        "action": ("AP.配置文件.康冠.20W", "BnO_main_speaker_bass")
                     }
                 }
             }
