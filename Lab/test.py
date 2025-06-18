@@ -79,31 +79,47 @@ def process_excel_file(file_path, output_dir, order_date, order_number):
         return False
 
 
+
 def get_input_pairs():
     pairs = []
-    print("\n请输入日期和订单编号对（格式：2025/6/12 XSCKD002748）")
-    print("输入空行结束")
+    print("\n请输入日期和订单编号对（格式：2025/6/12	XSCKD002748）")
+    print("每行一对，输入空行结束")
 
+    print("示例输入:")
+    print("2025/6/12	XSCKD002748")
+    print("2025/6/7	XSCKD002730")
+    print("（直接粘贴多行也可以）")
+
+    print("\n开始输入:")
     while True:
-        user_input = input("输入日期和订单编号（用空格分隔）: ").strip()
+        user_input = input().strip()
         if not user_input:
             break
 
         try:
-            date_str, order_number = user_input.split(maxsplit=1)
+            # 使用制表符或空格分割输入
+            parts = user_input.split()
+            if len(parts) != 2:
+                print("输入格式错误，请使用 '日期 订单编号' 格式")
+                continue
+
+            date_str, order_number = parts
             # 转换日期格式为 YYYY-MM-DD
-            parts = date_str.split('/')
-            if len(parts) == 3:
-                year, month, day = parts
+            date_parts = date_str.split('/')
+            if len(date_parts) == 3:
+                year, month, day = date_parts
                 formatted_date = f"{year}-{month.zfill(2)}-{day.zfill(2)}"
                 pairs.append((formatted_date, order_number))
                 print(f"已添加: {formatted_date} {order_number}")
             else:
                 print("日期格式错误，请使用 YYYY/MM/DD 格式")
-        except ValueError:
-            print("输入格式错误，请使用 '日期 订单编号' 格式")
+        except Exception as e:
+            print(f"输入错误: {e}，请重试")
 
     return pairs
+
+
+# ... 后面的代码保持不变 ...
 
 
 def main():
