@@ -3,6 +3,7 @@ import openpyxl
 import secrets
 import shutil
 from datetime import datetime
+from openpyxl_image_loader import SheetImageLoader
 
 
 def generate_random_numbers(existing_values, value_range):
@@ -23,8 +24,8 @@ def generate_random_numbers(existing_values, value_range):
 
 def process_excel_file(file_path, output_dir, order_date, order_number):
     try:
-        # 打开工作簿
-        workbook = openpyxl.load_workbook(file_path)
+        # 打开工作簿（保留图片）
+        workbook = openpyxl.load_workbook(file_path, data_only=False)
         # 获取第一个工作表
         sheet = workbook.active
 
