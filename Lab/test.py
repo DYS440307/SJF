@@ -3,7 +3,6 @@ import openpyxl
 import secrets
 import shutil
 from datetime import datetime
-from openpyxl_image_loader import SheetImageLoader
 
 
 def generate_random_numbers(existing_values, value_range):
@@ -80,10 +79,40 @@ def process_excel_file(file_path, output_dir, order_date, order_number):
         return False
 
 
+def get_input_pairs():
+    pairs = []
+    print("\n请输入日期和订单编号对（格式：2025/6/12 XSCKD002748）")
+    print("输入空行结束")
+
+    while True:
+        user_input = input("输入日期和订单编号（用空格分隔）: ").strip()
+        if not user_input:
+            break
+
+        try:
+            date_str, order_number = user_input.split(maxsplit=1)
+            # 转换日期格式为 YYYY-MM-DD
+            parts = date_str.split('/')
+            if len(parts) == 3:
+                year, month, day = parts
+                formatted_date = f"{year}-{month.zfill(2)}-{day.zfill(2)}"
+                pairs.append((formatted_date, order_number))
+                print(f"已添加: {formatted_date} {order_number}")
+            else:
+                print("日期格式错误，请使用 YYYY/MM/DD 格式")
+        except ValueError:
+            print("输入格式错误，请使用 '日期 订单编号' 格式")
+
+    return pairs
+
+
 def main():
-    # 获取用户输入
-    order_date = input("请输入日期 (格式: YYYY-MM-DD): ")
-    order_number = input("请输入订单编号: ")
+    # 获取用户输入的多对日期和订单编号
+    input_pairs = get_input_pairs()
+
+    if not input_pairs:
+        print("未输入任何数据，程序退出")
+        return
 
     # 源目录
     source_dir = r"Z:\3-品质部\实验室\邓洋枢\1-实验室相关文件\3-周期验证\2025年\小米\S003\模板"
@@ -109,13 +138,16 @@ def main():
 
     print(f"找到 {len(excel_files)} 个符合条件的文件")
 
-    # 处理每个Excel文件
-    success_count = 0
-    for file_path in excel_files:
-        if process_excel_file(file_path, output_dir, order_date, order_number):
-            success_count += 1
+    # 对每对输入执行处理
+    for order_date, order_number in input_pairs:
+        print(f"\n处理订单: {order_date} {order_number}")
+        success_count = 0
 
-    print(f"处理完成: 成功 {success_count} 个, 失败 {len(excel_files) - success_count} 个")
+        for file_path in excel_files:
+            if process_excel_file(file_path, output_dir, order_date, order_number):
+                success_count += 1
+
+        print(f"订单 {order_number} 处理完成: 成功 {success_count} 个, 失败 {len(excel_files) - success_count} 个")
 
 
 if __name__ == "__main__":
