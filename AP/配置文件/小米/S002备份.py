@@ -5,30 +5,30 @@ from AP.配置文件.SPL实验数据处理 import process_spl_data
 from AP.配置文件.THD实验数据处理 import process_thd_data
 from AP.配置文件.路径配置 import experiment_report_path, IMP_path
 from AP.配置文件.IMP实验数据处理 import process_excel
-target_value = 2200
-range_min = 1000
-range_max = 2250
-mode = 1 # 1最大值 2求最小值
+target_value = 600
+range_min = 110
+range_max = 250
+mode = 2 # 1最大值 2求最小值
 
 SPL1 = 500
 SPL2 = 1000
 SPL3 = 1500
 SPL4 = 2000
 
-THD1 = 2000
+THD1 = 216
 THD2 = 10000
 
 def BnO_main_speaker_bass():
-    Fb_nominal = 2100 # 低音箱体的调谐频率 (Hz)
+    Fb_nominal = 180 # 低音箱体的调谐频率 (Hz)
     ACR_nominal = 6  # 音响的ACR值
-    SPL_nominal = 88  # 音响的声压级 (dB)
-    THD_nominal = 5  # 总谐波失真 (百分比)
+    SPL_nominal = 78  # 音响的声压级 (dB)
+    THD_nominal = 10  # 总谐波失真 (百分比)
     B9 = "Fb(Hz)"
 
     # 定义波动百分比
-    Fb_percentage = 15  # ±20%
+    Fb_percentage = 20  # ±20%
     ACR_percentage = 15  # ±15%
-    SPL_percentage = 2  # ±3 dB
+    SPL_percentage = 3  # ±3 dB
     THD_max = 5  # ≤10%
 
     # 计算上下限
