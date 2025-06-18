@@ -3,6 +3,8 @@ import openpyxl
 import secrets
 import shutil
 from datetime import datetime
+import win32com.client
+import time
 
 
 # ===== 配置区域 =====
@@ -10,6 +12,9 @@ class Config:
     # 文件路径配置
     SOURCE_DIR = r"Z:\3-品质部\实验室\邓洋枢\1-实验室相关文件\3-周期验证\2025年\小米\S003\模板"
     OUTPUT_DIR = r"E:\System\desktop\PY\实验室"
+
+    # PDF输出配置
+    PDF_OUTPUT_DIR = os.path.join(OUTPUT_DIR, "PDF输出")
 
     # 随机数生成范围配置 (最小值, 最大值, 最小差值)
     RANGE_CONFIG = {
@@ -44,6 +49,7 @@ def generate_random_numbers(existing_values, value_range):
 
 def process_excel_file(file_path, output_dir, order_date, order_number, config):
     try:
+        # 处理Excel文件
         workbook = openpyxl.load_workbook(file_path, data_only=False)
         sheet = workbook.active
 
@@ -53,7 +59,6 @@ def process_excel_file(file_path, output_dir, order_date, order_number, config):
         existing_values = set()
 
         for row in range(config.ROW_START, config.ROW_END + 1):
-            # 使用配置中的范围生成随机数
             value_b, value_c = generate_random_numbers(existing_values, config.RANGE_CONFIG['B_C'])
             value_d, value_e = generate_random_numbers(existing_values, config.RANGE_CONFIG['D_E'])
             value_g, value_f = generate_random_numbers(existing_values, config.RANGE_CONFIG['F_G'])
@@ -76,11 +81,56 @@ def process_excel_file(file_path, output_dir, order_date, order_number, config):
         output_file_path = os.path.join(output_dir, new_name)
 
         workbook.save(output_file_path)
-        print(f"成功处理: {file_name} -> {new_name}")
-        return True
+        print(f"成功处理Excel: {file_name} -> {new_name}")
+
+        # 转换为PDF
+        pdf_output_dir = os.path.join(config.PDF_OUTPUT_DIR, os.path.relpath(output_dir, config.OUTPUT_DIR))
+        pdf_path = os.path.join(pdf_output_dir, os.path.splitext(new_name)[0] + ".pdf")
+
+        if excel_to_pdf(output_file_path, pdf_path):
+            print(f"成功转换为PDF: {pdf_path}")
+            return True
+        else:
+            print(f"PDF转换失败: {output_file_path}")
+            return False
+
     except Exception as e:
         print(f"处理文件 {file_path} 时出错: {e}")
         return False
+
+
+def excel_to_pdf(excel_path, pdf_path):
+    """将Excel文件转换为PDF"""
+    try:
+        # 创建Excel应用实例
+        excel = win32com.client.Dispatch("Excel.Application")
+        excel.Visible = False
+        excel.DisplayAlerts = False
+
+        # 打开工作簿
+        workbook = excel.Workbooks.Open(os.path.abspath(excel_path))
+
+        # 创建PDF输出目录
+        os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
+
+        # 导出为PDF（所有工作表）
+        workbook.ExportAsFixedFormat(0, pdf_path)
+
+        # 关闭工作簿和Excel应用
+        workbook.Close()
+        excel.Quit()
+
+        # 释放COM对象
+        del workbook
+        del excel
+
+        return True
+    except Exception as e:
+        print(f"Excel转PDF失败: {excel_path} -> {pdf_path}, 错误: {e}")
+        return False
+    finally:
+        # 确保资源被释放
+        time.sleep(1)  # 等待Excel完全退出
 
 
 def get_input_pairs():
@@ -129,10 +179,8 @@ def get_excel_files(config):
 
     for root, _, files in os.walk(config.SOURCE_DIR):
         for file in files:
-            # 检查文件扩展名
             if not any(file.lower().endswith(ext) for ext in config.FILE_FILTERS['extensions']):
                 continue
-            # 检查关键词
             if not all(keyword in file for keyword in config.FILE_FILTERS['keywords']):
                 continue
             excel_files.append(os.path.join(root, file))
@@ -144,10 +192,10 @@ def main():
     # 创建配置实例
     config = Config()
 
-    # 移除交互式配置修改
     print(f"\n使用配置:")
     print(f"  源目录: {config.SOURCE_DIR}")
     print(f"  输出目录: {config.OUTPUT_DIR}")
+    print(f"  PDF输出目录: {config.PDF_OUTPUT_DIR}")
 
     # 获取输入数据
     input_pairs = get_input_pairs()
