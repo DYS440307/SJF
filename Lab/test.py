@@ -5,51 +5,60 @@ import shutil
 from datetime import datetime
 
 
+# ===== 配置区域 =====
+class Config:
+    # 文件路径配置
+    SOURCE_DIR = r"Z:\3-品质部\实验室\邓洋枢\1-实验室相关文件\3-周期验证\2025年\小米\S003\模板"
+    OUTPUT_DIR = r"E:\System\desktop\PY\实验室"
+
+    # 随机数生成范围配置 (最小值, 最大值, 最小差值)
+    RANGE_CONFIG = {
+        'B_C': (130, 142, 2),  # B列和C列范围
+        'D_E': (5.8, 6.125, 0.12),  # D列和E列范围
+        'F_G': (76.8, 78.6, 0.32),  # F列和G列范围
+        'H_I': (9.4, 13.9, 1.21),  # H列和I列范围
+    }
+
+    # 数据填充区域
+    ROW_START = 12
+    ROW_END = 16  # 包含此行
+
+    # 文件匹配条件
+    FILE_FILTERS = {
+        'extensions': ['.xlsx', '.xls'],
+        'keywords': ['S003', '模板']
+    }
+
+
+# ===== 功能函数 =====
 def generate_random_numbers(existing_values, value_range):
     min_val, max_val, min_diff = value_range
     max_attempts = 100
     for _ in range(max_attempts):
-        # 生成较小值
         smaller_value = round(secrets.SystemRandom().uniform(min_val, max_val - min_diff), 3)
-        # 生成较大值，比前者大至少min_diff
         larger_value = round(secrets.SystemRandom().uniform(smaller_value + min_diff, max_val), 3)
-
-        # 检查是否有重复
         if smaller_value not in existing_values and larger_value not in existing_values:
             return smaller_value, larger_value
-
     raise Exception("无法在100次尝试内生成不重复的随机数")
 
 
-def process_excel_file(file_path, output_dir, order_date, order_number):
+def process_excel_file(file_path, output_dir, order_date, order_number, config):
     try:
-        # 打开工作簿（保留图片）
         workbook = openpyxl.load_workbook(file_path, data_only=False)
-        # 获取第一个工作表
         sheet = workbook.active
 
-        # 写入日期和订单编号
         sheet['G2'] = order_date
         sheet['L2'] = order_number
 
-        # 存储已存在的值
         existing_values = set()
 
-        # 定义各范围配置
-        RANGE_1 = (130, 142, 2)
-        RANGE_2 = (5.8, 6.125, 0.12)
-        RANGE_3 = (76.8, 78.6, 0.32)
-        RANGE_4 = (9.4, 13.9, 1.21)
+        for row in range(config.ROW_START, config.ROW_END + 1):
+            # 使用配置中的范围生成随机数
+            value_b, value_c = generate_random_numbers(existing_values, config.RANGE_CONFIG['B_C'])
+            value_d, value_e = generate_random_numbers(existing_values, config.RANGE_CONFIG['D_E'])
+            value_g, value_f = generate_random_numbers(existing_values, config.RANGE_CONFIG['F_G'])
+            value_h, value_i = generate_random_numbers(existing_values, config.RANGE_CONFIG['H_I'])
 
-        # 对B12:I16的每个单元格对进行操作
-        for row in range(12, 17):
-            # 生成各列数据
-            value_b, value_c = generate_random_numbers(existing_values, RANGE_1)
-            value_d, value_e = generate_random_numbers(existing_values, RANGE_2)
-            value_g, value_f = generate_random_numbers(existing_values, RANGE_3)
-            value_h, value_i = generate_random_numbers(existing_values, RANGE_4)
-
-            # 写入数据
             sheet[f'B{row}'] = value_b
             sheet[f'C{row}'] = value_c
             sheet[f'D{row}'] = value_d
@@ -59,25 +68,19 @@ def process_excel_file(file_path, output_dir, order_date, order_number):
             sheet[f'H{row}'] = value_h
             sheet[f'I{row}'] = value_i
 
-            # 更新已存在的值集合
             existing_values.update([value_b, value_c, value_d, value_e, value_f, value_g, value_h, value_i])
 
-        # 创建输出目录（如果不存在）
         os.makedirs(output_dir, exist_ok=True)
-
-        # 构建输出文件名（用订单编号替换"模板"，不添加时间戳）
         file_name = os.path.basename(file_path)
         new_name = file_name.replace("模板", f"_{order_number}")
         output_file_path = os.path.join(output_dir, new_name)
 
-        # 保存工作簿到新位置
         workbook.save(output_file_path)
         print(f"成功处理: {file_name} -> {new_name}")
         return True
     except Exception as e:
         print(f"处理文件 {file_path} 时出错: {e}")
         return False
-
 
 
 def get_input_pairs():
@@ -97,14 +100,12 @@ def get_input_pairs():
             break
 
         try:
-            # 使用制表符或空格分割输入
             parts = user_input.split()
             if len(parts) != 2:
                 print("输入格式错误，请使用 '日期 订单编号' 格式")
                 continue
 
             date_str, order_number = parts
-            # 转换日期格式为 YYYY-MM-DD
             date_parts = date_str.split('/')
             if len(date_parts) == 3:
                 year, month, day = date_parts
@@ -119,48 +120,56 @@ def get_input_pairs():
     return pairs
 
 
-# ... 后面的代码保持不变 ...
+def get_excel_files(config):
+    """根据配置获取符合条件的Excel文件"""
+    excel_files = []
+    if not os.path.exists(config.SOURCE_DIR):
+        print(f"错误: 源目录不存在 - {config.SOURCE_DIR}")
+        return excel_files
+
+    for root, _, files in os.walk(config.SOURCE_DIR):
+        for file in files:
+            # 检查文件扩展名
+            if not any(file.lower().endswith(ext) for ext in config.FILE_FILTERS['extensions']):
+                continue
+            # 检查关键词
+            if not all(keyword in file for keyword in config.FILE_FILTERS['keywords']):
+                continue
+            excel_files.append(os.path.join(root, file))
+
+    return excel_files
 
 
 def main():
-    # 获取用户输入的多对日期和订单编号
-    input_pairs = get_input_pairs()
+    # 创建配置实例
+    config = Config()
 
+    # 移除交互式配置修改
+    print(f"\n使用配置:")
+    print(f"  源目录: {config.SOURCE_DIR}")
+    print(f"  输出目录: {config.OUTPUT_DIR}")
+
+    # 获取输入数据
+    input_pairs = get_input_pairs()
     if not input_pairs:
         print("未输入任何数据，程序退出")
         return
 
-    # 源目录
-    source_dir = r"Z:\3-品质部\实验室\邓洋枢\1-实验室相关文件\3-周期验证\2025年\小米\S003\模板"
-    # 输出目录
-    output_dir = r"E:\System\desktop\PY\实验室"
-
-    # 检查源目录是否存在
-    if not os.path.exists(source_dir):
-        print(f"错误: 源目录不存在 - {source_dir}")
-        return
-
-    # 获取所有Excel文件
-    excel_files = []
-    for root, _, files in os.walk(source_dir):
-        for file in files:
-            if (file.lower().endswith(('.xlsx', '.xls')) and
-                    "S003" in file and "模板" in file):
-                excel_files.append(os.path.join(root, file))
-
+    # 获取符合条件的Excel文件
+    excel_files = get_excel_files(config)
     if not excel_files:
         print("未找到符合条件的Excel文件")
         return
 
     print(f"找到 {len(excel_files)} 个符合条件的文件")
 
-    # 对每对输入执行处理
+    # 批量处理文件
     for order_date, order_number in input_pairs:
         print(f"\n处理订单: {order_date} {order_number}")
         success_count = 0
 
         for file_path in excel_files:
-            if process_excel_file(file_path, output_dir, order_date, order_number):
+            if process_excel_file(file_path, config.OUTPUT_DIR, order_date, order_number, config):
                 success_count += 1
 
         print(f"订单 {order_number} 处理完成: 成功 {success_count} 个, 失败 {len(excel_files) - success_count} 个")
