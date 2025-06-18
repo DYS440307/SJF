@@ -21,12 +21,16 @@ def generate_random_numbers(existing_values, value_range):
     raise Exception("无法在100次尝试内生成不重复的随机数")
 
 
-def process_excel_file(file_path, output_dir):
+def process_excel_file(file_path, output_dir, order_date, order_number):
     try:
         # 打开工作簿
         workbook = openpyxl.load_workbook(file_path)
         # 获取第一个工作表
         sheet = workbook.active
+
+        # 写入日期和订单编号
+        sheet['G2'] = order_date
+        sheet['L2'] = order_number
 
         # 存储已存在的值
         existing_values = set()
@@ -61,16 +65,14 @@ def process_excel_file(file_path, output_dir):
         # 创建输出目录（如果不存在）
         os.makedirs(output_dir, exist_ok=True)
 
-        # 构建输出文件名（添加时间戳）
+        # 构建输出文件名（用订单编号替换"模板"，不添加时间戳）
         file_name = os.path.basename(file_path)
-        name_part, ext_part = os.path.splitext(file_name)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_file_name = f"{name_part}_{timestamp}{ext_part}"
-        output_file_path = os.path.join(output_dir, output_file_name)
+        new_name = file_name.replace("模板", f"_{order_number}")
+        output_file_path = os.path.join(output_dir, new_name)
 
         # 保存工作簿到新位置
         workbook.save(output_file_path)
-        print(f"成功处理: {file_name} -> {output_file_name}")
+        print(f"成功处理: {file_name} -> {new_name}")
         return True
     except Exception as e:
         print(f"处理文件 {file_path} 时出错: {e}")
@@ -78,6 +80,10 @@ def process_excel_file(file_path, output_dir):
 
 
 def main():
+    # 获取用户输入
+    order_date = input("请输入日期 (格式: YYYY-MM-DD): ")
+    order_number = input("请输入订单编号: ")
+
     # 源目录
     source_dir = r"Z:\3-品质部\实验室\邓洋枢\1-实验室相关文件\3-周期验证\2025年\小米\S003\模板"
     # 输出目录
@@ -92,7 +98,6 @@ def main():
     excel_files = []
     for root, _, files in os.walk(source_dir):
         for file in files:
-            # 修改此处，同时检查"S003"和"模板"
             if (file.lower().endswith(('.xlsx', '.xls')) and
                     "S003" in file and "模板" in file):
                 excel_files.append(os.path.join(root, file))
@@ -106,7 +111,7 @@ def main():
     # 处理每个Excel文件
     success_count = 0
     for file_path in excel_files:
-        if process_excel_file(file_path, output_dir):
+        if process_excel_file(file_path, output_dir, order_date, order_number):
             success_count += 1
 
     print(f"处理完成: 成功 {success_count} 个, 失败 {len(excel_files) - success_count} 个")
