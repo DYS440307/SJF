@@ -296,9 +296,15 @@ def get_input_pairs(config):
 
             # 检查条件：实发数量 > 6000 且订单编号未处理过
             if quantity > 6000 and order_number not in processed_orders:
-                # 处理日期格式
+                # 处理日期格式 - 修改为使用更通用的无前导零格式
+                formatted_date = None
+
                 if isinstance(order_date, datetime):
-                    formatted_date = order_date.strftime('%Y-%m-%d')
+                    # 使用Python字符串操作移除前导零
+                    year = order_date.year
+                    month = order_date.month
+                    day = order_date.day
+                    formatted_date = f"{year}/{month}/{day}"
                 else:
                     # 尝试解析字符串日期
                     try:
@@ -307,7 +313,11 @@ def get_input_pairs(config):
                             for fmt in ('%Y-%m-%d', '%Y/%m/%d', '%m/%d/%Y', '%Y%m%d'):
                                 try:
                                     date_obj = datetime.strptime(order_date, fmt)
-                                    formatted_date = date_obj.strftime('%Y-%m-%d')
+                                    # 使用字符串操作移除前导零
+                                    year = date_obj.year
+                                    month = date_obj.month
+                                    day = date_obj.day
+                                    formatted_date = f"{year}/{month}/{day}"
                                     break
                                 except ValueError:
                                     continue
@@ -320,9 +330,10 @@ def get_input_pairs(config):
                         print(f"警告: 日期处理错误 '{order_date}': {e}，使用原始值")
                         formatted_date = str(order_date)
 
-                pairs.append((formatted_date, order_number))
-                processed_orders.add(order_number)
-                print(f"已添加: {formatted_date} {order_number}")
+                if formatted_date:
+                    pairs.append((formatted_date, order_number))
+                    processed_orders.add(order_number)
+                    print(f"已添加: {formatted_date} {order_number}")
 
         workbook.close()
         print(f"从销售明细文件中提取了 {len(pairs)} 个符合条件的订单")
