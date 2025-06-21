@@ -38,6 +38,12 @@ class Config:
         'keywords': ['310100108', '模板']
     }
 
+    # 处理模式配置
+    PROCESS_MODE = {
+        'large_quantity': True,  # 处理实发数量>6000的单据
+        'closest_small_quantity': True  # 处理最近且实发数量<6000的单据
+    }
+
 
 # ===== 功能函数 =====
 def generate_random_numbers(existing_values, value_range, ensure_first_larger=False):
@@ -75,7 +81,7 @@ def generate_random_numbers(existing_values, value_range, ensure_first_larger=Fa
     raise Exception("无法在100次尝试内生成不重复的随机数")
 
 
-def process_excel_file(file_path, output_dir, order_date, order_number, config):
+def process_excel_file(file_path, output_dir, order_date, order_number, material_code, config):
     """
     处理单个Excel文件：填充随机数并转换为PDF
 
@@ -84,12 +90,17 @@ def process_excel_file(file_path, output_dir, order_date, order_number, config):
         output_dir (str): 输出目录
         order_date (str): 订单日期
         order_number (str): 订单编号
+        material_code (str): 物料编码
         config (Config): 配置对象
 
     返回:
         bool: 处理是否成功
     """
     try:
+        # 基于物料编码创建子目录
+        material_dir = os.path.join(output_dir, str(material_code))
+        os.makedirs(material_dir, exist_ok=True)
+
         # 打开Excel工作簿
         workbook = openpyxl.load_workbook(file_path, data_only=False)
         sheet = workbook.active
@@ -160,16 +171,16 @@ def process_excel_file(file_path, output_dir, order_date, order_number, config):
             existing_values.update([value_b, value_c, value_d, value_e, value_f, value_g, value_h, value_i])
 
         # 保存修改后的Excel文件
-        os.makedirs(output_dir, exist_ok=True)
         file_name = os.path.basename(file_path)
         new_name = file_name.replace("模板", f"_{order_number}")
-        output_file_path = os.path.join(output_dir, new_name)
+        output_file_path = os.path.join(material_dir, new_name)
         workbook.save(output_file_path)
-        print(f"成功处理Excel: {file_name} -> {new_name}")
+        print(f"成功处理Excel: {file_name} -> {new_name} (物料编码: {material_code})")
 
         # 转换为PDF
-        pdf_output_dir = os.path.join(config.PDF_OUTPUT_DIR, os.path.relpath(output_dir, config.OUTPUT_DIR))
-        pdf_path = os.path.join(pdf_output_dir, os.path.splitext(new_name)[0] + ".pdf")
+        pdf_material_dir = os.path.join(config.PDF_OUTPUT_DIR, str(material_code))
+        os.makedirs(pdf_material_dir, exist_ok=True)
+        pdf_path = os.path.join(pdf_material_dir, os.path.splitext(new_name)[0] + ".pdf")
 
         if excel_to_pdf(output_file_path, pdf_path):
             print(f"成功转换为PDF: {pdf_path}")
@@ -228,14 +239,39 @@ def excel_to_pdf(excel_path, pdf_path):
 
 def get_input_pairs(config):
     """
-    从销售明细Excel文件中获取日期和订单编号对
-    条件：物料编码对应实发数量 > 6000
+    从销售明细Excel文件中获取单据对
+    根据配置决定获取实发数量>6000的所有单据还是最近且实发数量<6000的单据
 
     参数:
         config (Config): 配置对象
 
     返回:
-        list: 包含元组 (日期, 订单编号) 的列表
+        list: 包含元组 (日期, 订单编号, 物料编码) 的列表
+    """
+    pairs = []
+
+    if config.PROCESS_MODE['large_quantity']:
+        # 获取所有实发数量>6000的单据
+        pairs = get_large_quantity_pairs(config)
+
+    if config.PROCESS_MODE['closest_small_quantity']:
+        # 获取最近且实发数量<6000的单据
+        closest_pair = get_closest_small_quantity_pair(config)
+        if closest_pair:
+            pairs.append(closest_pair)
+
+    return pairs
+
+
+def get_large_quantity_pairs(config):
+    """
+    获取实发数量>6000的所有单据
+
+    参数:
+        config (Config): 配置对象
+
+    返回:
+        list: 包含元组 (日期, 订单编号, 物料编码) 的列表
     """
     pairs = []
 
@@ -288,6 +324,7 @@ def get_input_pairs(config):
             # 获取各列值
             order_date = row[date_col]
             order_number = row[order_col]
+            material_code = row[material_col]
             # 实发数量需要转换为数值类型
             try:
                 quantity = float(row[quantity_col]) if row[quantity_col] is not None else 0
@@ -330,13 +367,13 @@ def get_input_pairs(config):
                         print(f"警告: 日期处理错误 '{order_date}': {e}，使用原始值")
                         formatted_date = str(order_date)
 
-                if formatted_date:
-                    pairs.append((formatted_date, order_number))
+                if formatted_date and material_code is not None:
+                    pairs.append((formatted_date, order_number, material_code))
                     processed_orders.add(order_number)
-                    print(f"已添加: {formatted_date} {order_number}")
+                    print(f"已添加: {formatted_date} {order_number} (物料编码: {material_code})")
 
         workbook.close()
-        print(f"从销售明细文件中提取了 {len(pairs)} 个符合条件的订单")
+        print(f"从销售明细文件中提取了 {len(pairs)} 个实发数量大于6000的订单")
 
         if not pairs:
             print("警告: 未找到实发数量大于6000的记录")
@@ -346,6 +383,121 @@ def get_input_pairs(config):
     except Exception as e:
         print(f"读取销售明细文件时出错: {e}")
         return pairs
+
+
+def get_closest_small_quantity_pair(config):
+    """
+    获取距离今日最近且实发数量<6000的单据
+
+    参数:
+        config (Config): 配置对象
+
+    返回:
+        tuple: (日期, 订单编号, 物料编码) 或 None
+    """
+    today = datetime.now().date()
+    closest_record = None
+    min_days_diff = float('inf')
+
+    try:
+        if not os.path.exists(config.SALES_DETAIL_FILE):
+            print(f"错误: 销售明细文件不存在 - {config.SALES_DETAIL_FILE}")
+            return None
+
+        # 打开销售明细Excel文件
+        workbook = openpyxl.load_workbook(config.SALES_DETAIL_FILE, data_only=True)
+        sheet = workbook.active
+
+        # 获取表头行，确定各列索引
+        header_row = next(sheet.iter_rows(min_row=1, max_row=1, values_only=True))
+        date_col = None
+        order_col = None
+        material_col = None
+        quantity_col = None
+
+        # 查找各列对应的索引
+        for idx, cell_value in enumerate(header_row):
+            if cell_value is None:
+                continue
+            cell_value = str(cell_value).strip().lower()
+            if '日期' in cell_value:
+                date_col = idx
+            elif '单据编号' in cell_value:
+                order_col = idx
+            elif '物料编码' in cell_value:
+                material_col = idx
+            elif '实发数量' in cell_value:
+                quantity_col = idx
+
+        # 检查是否找到了所有需要的列
+        if any(col is None for col in [date_col, order_col, material_col, quantity_col]):
+            missing = [col_name for col_name, col_idx in
+                       [('日期', date_col), ('单据编号', order_col), ('物料编码', material_col),
+                        ('实发数量', quantity_col)]
+                       if col_idx is None]
+            print(f"错误: 在销售明细文件中找不到以下列: {', '.join(missing)}")
+            return None
+
+        # 从第二行开始遍历数据行
+        for row in sheet.iter_rows(min_row=2, values_only=True):
+            # 跳过空行
+            if not any(row):
+                continue
+
+            # 获取各列值
+            order_date = row[date_col]
+            order_number = row[order_col]
+            material_code = row[material_col]
+            # 实发数量需要转换为数值类型
+            try:
+                quantity = float(row[quantity_col]) if row[quantity_col] is not None else 0
+            except (ValueError, TypeError):
+                quantity = 0
+
+            # 检查条件：实发数量 < 6000
+            if quantity < 6000:
+                # 处理日期格式
+                date_obj = None
+                if isinstance(order_date, datetime):
+                    date_obj = order_date.date()
+                else:
+                    # 尝试解析字符串日期
+                    try:
+                        if isinstance(order_date, str):
+                            for fmt in ('%Y-%m-%d', '%Y/%m/%d', '%m/%d/%Y', '%Y%m%d'):
+                                try:
+                                    date_obj = datetime.strptime(order_date, fmt).date()
+                                    break
+                                except ValueError:
+                                    continue
+                    except Exception as e:
+                        print(f"警告: 日期处理错误 '{order_date}': {e}")
+                        continue
+
+                if date_obj and material_code is not None:
+                    # 计算与今日的天数差
+                    days_diff = abs((date_obj - today).days)
+
+                    # 如果是更接近的日期，更新最近记录
+                    if days_diff < min_days_diff:
+                        min_days_diff = days_diff
+                        closest_record = (date_obj, order_number, material_code)
+
+        workbook.close()
+
+        if closest_record:
+            # 格式化日期为 YYYY/M/D
+            formatted_date = f"{closest_record[0].year}/{closest_record[0].month}/{closest_record[0].day}"
+            print(
+                f"找到最近的实发数量小于6000的单据: {formatted_date} {closest_record[1]} (物料编码: {closest_record[2]})，距离今日 {min_days_diff} 天")
+            return (formatted_date, closest_record[1], closest_record[2])
+        else:
+            print("未找到实发数量小于6000的单据")
+            return None
+
+    except Exception as e:
+        print(f"读取销售明细文件时出错: {e}")
+        return None
 
 
 def get_excel_files(config):
@@ -386,8 +538,10 @@ def main():
     print(f"  输出目录: {config.OUTPUT_DIR}")
     print(f"  PDF输出目录: {config.PDF_OUTPUT_DIR}")
     print(f"  销售明细文件: {config.SALES_DETAIL_FILE}")
+    print(
+        f"  处理模式: 实发数量>6000的单据{'✓' if config.PROCESS_MODE['large_quantity'] else '✗'}, 最近且实发数量<6000的单据{'✓' if config.PROCESS_MODE['closest_small_quantity'] else '✗'}")
 
-    # 从销售明细Excel文件获取日期和订单编号对
+    # 从销售明细Excel文件获取单据对
     input_pairs = get_input_pairs(config)
     if not input_pairs:
         print("未找到符合条件的数据，程序退出")
@@ -401,17 +555,17 @@ def main():
 
     print(f"找到 {len(excel_files)} 个符合条件的文件")
 
-    # 批量处理文件
-    for order_date, order_number in input_pairs:
-        print(f"\n处理订单: {order_date} {order_number}")
+    # 处理所有单据
+    for order_date, order_number, material_code in input_pairs:
+        print(f"\n处理订单: {order_date} {order_number} (物料编码: {material_code})")
         success_count = 0
 
         for file_path in excel_files:
-            if process_excel_file(file_path, config.OUTPUT_DIR, order_date, order_number, config):
+            if process_excel_file(file_path, config.OUTPUT_DIR, order_date, order_number, material_code, config):
                 success_count += 1
 
         print(f"订单 {order_number} 处理完成: 成功 {success_count} 个, 失败 {len(excel_files) - success_count} 个")
 
 
 if __name__ == "__main__":
-    main()
+    main()    
