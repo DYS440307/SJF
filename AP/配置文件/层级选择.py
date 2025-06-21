@@ -68,8 +68,8 @@ menu_structure = {
                                     "action": ("AP.配置文件.TCL.KL.BnO主音箱低音", "BnO_main_speaker_bass")
                                 },
                                 "3": {
-                                    "label": "BnO主音箱高音",
-                                    "action": ("AP.配置文件.TCL.KL.BnO主音箱高音", "BnO_main_speaker_treble")
+                                    "label": "BnO主箱高音单体",
+                                    "action": ("AP.配置文件.TCL.KL.BnO主箱高音单体", "BnO_main_speaker_treble")
                                 },
                                 "4": {
                                     "label": "G0202-000313",
@@ -123,6 +123,10 @@ menu_structure = {
                     "12": {
                         "label": "G0202-000254",
                         "action": ("AP.配置文件.TCL.G0202-000254", "BnO_main_speaker_bass")
+                    },
+                    "13": {
+                        "label": "BnO主箱高音单体",
+                        "action": ("AP.配置文件.TCL.BnO主箱高音单体", "BnO_main_speaker_bass")
                     }
                 }
             }
