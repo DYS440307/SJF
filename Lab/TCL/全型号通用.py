@@ -5,18 +5,15 @@ import shutil
 from datetime import datetime
 import win32com.client
 import time
+from pathlib import Path
 
 
-# ===== 配置区域 =====
 class Config:
     """程序配置类，集中管理所有可配置参数"""
-    # 文件路径配置
-    SOURCE_DIR = r"Z:\3-品质部\实验室\邓洋枢\1-实验室相关文件\3-周期验证\2025年\TCL\12302-500240(310100062)\(310100108)模板"
+    # 基础路径配置
+    BASE_DIR = r"Z:\3-品质部\实验室\邓洋枢\1-实验室相关文件\3-周期验证\2025年"
     OUTPUT_DIR = r"E:\System\desktop\PY\实验室"
-    # 销售明细Excel文件路径
     SALES_DETAIL_FILE = r"Z:\3-品质部\实验室\邓洋枢\1-实验室相关文件\3-周期验证\TCL销售明细.xlsx"
-    # 配置文件路径
-    CONFIG_FILE = os.path.join(SOURCE_DIR, "310100108配置文件.txt")
 
     # PDF输出配置
     PDF_OUTPUT_DIR = os.path.join(OUTPUT_DIR, "PDF输出")
@@ -27,9 +24,83 @@ class Config:
         'closest_small_quantity': True  # 处理最近且实发数量<6000的单据
     }
 
+    # 动态查找的路径
+    SOURCE_DIR = None
+    CONFIG_FILE = None
+
     def __init__(self):
         """初始化配置，从文件加载动态配置"""
+        # 根据销售明细中的物料编码查找配置文件和模板目录
+        material_code = self._get_material_code_from_sales_detail()
+        self._find_config_and_source_dir(material_code)
+
+        if not self.SOURCE_DIR or not self.CONFIG_FILE:
+            raise FileNotFoundError("无法找到匹配的配置文件和模板目录")
+
         self.load_config_from_file()
+
+    def _get_material_code_from_sales_detail(self):
+        """从销售明细文件中提取物料编码"""
+        try:
+            if not os.path.exists(self.SALES_DETAIL_FILE):
+                raise FileNotFoundError(f"销售明细文件不存在 - {self.SALES_DETAIL_FILE}")
+
+            # 打开销售明细Excel文件
+            workbook = openpyxl.load_workbook(self.SALES_DETAIL_FILE, data_only=True)
+            sheet = workbook.active
+
+            # 获取表头行，确定物料编码列索引
+            header_row = next(sheet.iter_rows(min_row=1, max_row=1, values_only=True))
+            material_col = None
+
+            # 查找物料编码列对应的索引
+            for idx, cell_value in enumerate(header_row):
+                if cell_value is None:
+                    continue
+                cell_value = str(cell_value).strip().lower()
+                if '物料编码' in cell_value:
+                    material_col = idx
+                    break
+
+            # 检查是否找到了物料编码列
+            if material_col is None:
+                raise ValueError("在销售明细文件中找不到物料编码列")
+
+            # 从第二行开始遍历数据行，获取第一个非空的物料编码
+            for row in sheet.iter_rows(min_row=2, max_row=2, values_only=True):
+                material_code = row[material_col]
+                if material_code is not None:
+                    return str(material_code)
+
+            raise ValueError("销售明细文件中没有找到有效的物料编码")
+
+        except Exception as e:
+            raise Exception(f"从销售明细文件获取物料编码时出错: {e}")
+        finally:
+            if 'workbook' in locals():
+                workbook.close()
+
+    def _find_config_and_source_dir(self, material_code):
+        """在BASE_DIR下查找匹配的配置文件和模板目录"""
+        config_file_name = "310100108配置文件.txt"
+        template_dir_name = f"(310100108)模板"
+
+        print(f"正在查找物料编码为 {material_code} 的配置文件和模板目录...")
+
+        for root, dirs, files in os.walk(self.BASE_DIR):
+            # 检查是否包含配置文件
+            if config_file_name in files:
+                config_file_path = os.path.join(root, config_file_name)
+                # 检查同级或子目录中是否有匹配的模板目录
+                for d in [root] + [os.path.join(root, d) for d in dirs]:
+                    if os.path.basename(d) == template_dir_name:
+                        self.SOURCE_DIR = d
+                        self.CONFIG_FILE = config_file_path
+                        print(f"找到配置文件: {self.CONFIG_FILE}")
+                        print(f"找到模板目录: {self.SOURCE_DIR}")
+                        return
+
+        print(f"警告: 未找到匹配的配置文件和模板目录，使用默认路径...")
 
     def load_config_from_file(self):
         """从配置文件加载动态配置"""
@@ -199,6 +270,9 @@ def process_excel_file(file_path, output_dir, order_date, order_number, material
 
         # 填充随机数到指定区域
         for row in range(config.ROW_START, config.ROW_END + 1):
+            # 初始化变量，避免NameError
+            value_b, value_c, value_d, value_e, value_f, value_g, value_h, value_i = None, None, None, None, None, None, None, None
+
             max_attempts = 100  # 最大尝试次数
             for attempt in range(max_attempts):
                 # 临时集合，用于验证当前尝试的所有值
@@ -589,6 +663,7 @@ def main():
         print(f"  输出目录: {config.OUTPUT_DIR}")
         print(f"  PDF输出目录: {config.PDF_OUTPUT_DIR}")
         print(f"  销售明细文件: {config.SALES_DETAIL_FILE}")
+        print(f"  配置文件: {config.CONFIG_FILE}")
         print(
             f"  处理模式: 实发数量>6000的单据{'✓' if config.PROCESS_MODE['large_quantity'] else '✗'}, 最近且实发数量<6000的单据{'✓' if config.PROCESS_MODE['closest_small_quantity'] else '✗'}")
 
