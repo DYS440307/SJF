@@ -27,15 +27,20 @@ class Config:
     # 动态查找的路径
     SOURCE_DIR = None
     CONFIG_FILE = None
+    MATERIAL_CODE = None
 
-    def __init__(self):
+    def __init__(self, material_code=None):
         """初始化配置，从文件加载动态配置"""
-        # 根据销售明细中的物料编码查找配置文件和模板目录
-        material_code = self._get_material_code_from_sales_detail()
-        self._find_config_and_source_dir(material_code)
+        # 如果未指定物料编码，则从销售明细中提取第一个物料编码
+        if material_code:
+            self.MATERIAL_CODE = material_code
+        else:
+            self.MATERIAL_CODE = self._get_material_code_from_sales_detail()
+
+        self._find_config_and_source_dir(self.MATERIAL_CODE)
 
         if not self.SOURCE_DIR or not self.CONFIG_FILE:
-            raise FileNotFoundError("无法找到匹配的配置文件和模板目录")
+            raise FileNotFoundError(f"无法找到物料编码为 {self.MATERIAL_CODE} 的配置文件和模板目录")
 
         self.load_config_from_file()
 
@@ -82,8 +87,8 @@ class Config:
 
     def _find_config_and_source_dir(self, material_code):
         """在BASE_DIR下查找匹配的配置文件和模板目录"""
-        config_file_name = "310100108配置文件.txt"
-        template_dir_name = f"(310100108)模板"
+        config_file_name = f"{material_code}配置文件.txt"
+        template_dir_name = f"({material_code})模板"
 
         print(f"正在查找物料编码为 {material_code} 的配置文件和模板目录...")
 
@@ -100,7 +105,19 @@ class Config:
                         print(f"找到模板目录: {self.SOURCE_DIR}")
                         return
 
-        print(f"警告: 未找到匹配的配置文件和模板目录，使用默认路径...")
+        print(f"警告: 未找到物料编码为 {material_code} 的配置文件和模板目录")
+        # 如果找不到特定编码的模板，尝试使用通用模板
+        for root, dirs, files in os.walk(self.BASE_DIR):
+            if "通用模板" in dirs:
+                self.SOURCE_DIR = os.path.join(root, "通用模板")
+                print(f"使用通用模板目录: {self.SOURCE_DIR}")
+                # 尝试查找配置文件
+                for file in files:
+                    if "配置文件.txt" in file:
+                        self.CONFIG_FILE = os.path.join(root, file)
+                        print(f"使用通用配置文件: {self.CONFIG_FILE}")
+                        return
+        raise FileNotFoundError(f"无法找到物料编码为 {material_code} 的配置文件和模板目录，且无通用模板可用")
 
     def load_config_from_file(self):
         """从配置文件加载动态配置"""
@@ -396,13 +413,14 @@ def excel_to_pdf(excel_path, pdf_path):
         time.sleep(1)  # 等待Excel完全退出
 
 
-def get_input_pairs(config):
+def get_input_pairs(config, target_material_code):
     """
-    从销售明细Excel文件中获取单据对
+    从销售明细Excel文件中获取指定物料编码的单据对
     根据配置决定获取实发数量>6000的所有单据还是最近且实发数量<6000的单据
 
     参数:
         config (Config): 配置对象
+        target_material_code (str): 目标物料编码
 
     返回:
         list: 包含元组 (日期, 订单编号, 物料编码) 的列表
@@ -411,23 +429,24 @@ def get_input_pairs(config):
 
     if config.PROCESS_MODE['large_quantity']:
         # 获取所有实发数量>6000的单据
-        pairs = get_large_quantity_pairs(config)
+        pairs.extend(get_large_quantity_pairs(config, target_material_code))
 
     if config.PROCESS_MODE['closest_small_quantity']:
         # 获取最近且实发数量<6000的单据
-        closest_pair = get_closest_small_quantity_pair(config)
+        closest_pair = get_closest_small_quantity_pair(config, target_material_code)
         if closest_pair:
             pairs.append(closest_pair)
 
     return pairs
 
 
-def get_large_quantity_pairs(config):
+def get_large_quantity_pairs(config, target_material_code):
     """
-    获取实发数量>6000的所有单据
+    获取指定物料编码且实发数量>6000的所有单据
 
     参数:
         config (Config): 配置对象
+        target_material_code (str): 目标物料编码
 
     返回:
         list: 包含元组 (日期, 订单编号, 物料编码) 的列表
@@ -486,52 +505,21 @@ def get_large_quantity_pairs(config):
             try:
                 quantity = float(row[quantity_col]) if row[quantity_col] is not None else 0
             except (ValueError, TypeError):
-                raise ValueError(f"无法将实发数量转换为数值: {row[quantity_col]}")
+                continue
 
-            # 检查条件：实发数量 > 6000 且订单编号未处理过
-            if quantity > 6000 and order_number not in processed_orders:
-                # 处理日期格式 - 修改为使用更通用的无前导零格式
-                formatted_date = None
-
-                if isinstance(order_date, datetime):
-                    # 使用Python字符串操作移除前导零
-                    year = order_date.year
-                    month = order_date.month
-                    day = order_date.day
-                    formatted_date = f"{year}/{month}/{day}"
-                else:
-                    # 尝试解析字符串日期
-                    try:
-                        if isinstance(order_date, str):
-                            # 处理常见日期格式
-                            for fmt in ('%Y-%m-%d', '%Y/%m/%d', '%m/%d/%Y', '%Y%m%d'):
-                                try:
-                                    date_obj = datetime.strptime(order_date, fmt)
-                                    # 使用字符串操作移除前导零
-                                    year = date_obj.year
-                                    month = date_obj.month
-                                    day = date_obj.day
-                                    formatted_date = f"{year}/{month}/{day}"
-                                    break
-                                except ValueError:
-                                    continue
-                            else:
-                                raise ValueError(f"无法解析日期格式 '{order_date}'")
-                        else:
-                            raise ValueError(f"日期格式不支持: {type(order_date).__name__}")
-                    except Exception as e:
-                        raise ValueError(f"日期处理错误 '{order_date}': {e}")
-
-                if formatted_date and material_code is not None:
+            # 检查条件：物料编码匹配、实发数量 > 6000 且订单编号未处理过
+            if (str(material_code) == target_material_code and
+                    quantity > 6000 and
+                    order_number not in processed_orders):
+                # 处理日期格式
+                formatted_date = format_date(order_date)
+                if formatted_date:
                     pairs.append((formatted_date, order_number, material_code))
                     processed_orders.add(order_number)
                     print(f"已添加: {formatted_date} {order_number} (物料编码: {material_code})")
 
         workbook.close()
-        print(f"从销售明细文件中提取了 {len(pairs)} 个实发数量大于6000的订单")
-
-        if not pairs:
-            print("警告: 未找到实发数量大于6000的记录")
+        print(f"从销售明细文件中提取了 {len(pairs)} 个物料编码为 {target_material_code} 且实发数量大于6000的订单")
 
         return pairs
 
@@ -540,12 +528,13 @@ def get_large_quantity_pairs(config):
         return pairs
 
 
-def get_closest_small_quantity_pair(config):
+def get_closest_small_quantity_pair(config, target_material_code):
     """
-    获取距离今日最近且实发数量<6000的单据
+    获取距离今日最近且物料编码匹配、实发数量<6000的单据
 
     参数:
         config (Config): 配置对象
+        target_material_code (str): 目标物料编码
 
     返回:
         tuple: (日期, 订单编号, 物料编码) 或 None
@@ -607,26 +596,11 @@ def get_closest_small_quantity_pair(config):
             except (ValueError, TypeError):
                 continue
 
-            # 检查条件：实发数量 < 6000
-            if quantity < 6000:
+            # 检查条件：物料编码匹配、实发数量 < 6000
+            if str(material_code) == target_material_code and quantity < 6000:
                 # 处理日期格式
-                date_obj = None
-                if isinstance(order_date, datetime):
-                    date_obj = order_date.date()
-                else:
-                    # 尝试解析字符串日期
-                    try:
-                        if isinstance(order_date, str):
-                            for fmt in ('%Y-%m-%d', '%Y/%m/%d', '%m/%d/%Y', '%Y%m%d'):
-                                try:
-                                    date_obj = datetime.strptime(order_date, fmt).date()
-                                    break
-                                except ValueError:
-                                    continue
-                    except Exception:
-                        continue
-
-                if date_obj and material_code is not None:
+                date_obj = parse_date(order_date)
+                if date_obj:
                     # 计算与今日的天数差
                     days_diff = abs((date_obj - today).days)
 
@@ -641,10 +615,10 @@ def get_closest_small_quantity_pair(config):
             # 格式化日期为 YYYY/M/D
             formatted_date = f"{closest_record[0].year}/{closest_record[0].month}/{closest_record[0].day}"
             print(
-                f"找到最近的实发数量小于6000的单据: {formatted_date} {closest_record[1]} (物料编码: {closest_record[2]})，距离今日 {min_days_diff} 天")
+                f"找到最近的物料编码为 {target_material_code} 且实发数量小于6000的单据: {formatted_date} {closest_record[1]}，距离今日 {min_days_diff} 天")
             return (formatted_date, closest_record[1], closest_record[2])
         else:
-            print("未找到实发数量小于6000的单据")
+            print(f"未找到物料编码为 {target_material_code} 且实发数量小于6000的单据")
             return None
 
     except Exception as e:
@@ -652,51 +626,35 @@ def get_closest_small_quantity_pair(config):
         return None
 
 
-def main():
-    """程序主入口"""
-    try:
-        # 创建配置实例
-        config = Config()
+def format_date(date_value):
+    """处理日期格式，返回 YYYY/M/D 格式的字符串"""
+    if isinstance(date_value, datetime):
+        return f"{date_value.year}/{date_value.month}/{date_value.day}"
 
-        print(f"\n使用配置:")
-        print(f"  源目录: {config.SOURCE_DIR}")
-        print(f"  输出目录: {config.OUTPUT_DIR}")
-        print(f"  PDF输出目录: {config.PDF_OUTPUT_DIR}")
-        print(f"  销售明细文件: {config.SALES_DETAIL_FILE}")
-        print(f"  配置文件: {config.CONFIG_FILE}")
-        print(
-            f"  处理模式: 实发数量>6000的单据{'✓' if config.PROCESS_MODE['large_quantity'] else '✗'}, 最近且实发数量<6000的单据{'✓' if config.PROCESS_MODE['closest_small_quantity'] else '✗'}")
+    if isinstance(date_value, str):
+        for fmt in ('%Y-%m-%d', '%Y/%m/%d', '%m/%d/%Y', '%Y%m%d'):
+            try:
+                date_obj = datetime.strptime(date_value, fmt)
+                return f"{date_obj.year}/{date_obj.month}/{date_obj.day}"
+            except ValueError:
+                continue
 
-        # 从销售明细Excel文件获取单据对
-        input_pairs = get_input_pairs(config)
-        if not input_pairs:
-            print("未找到符合条件的数据，程序退出")
-            return
+    return None
 
-        # 获取符合条件的Excel文件
-        excel_files = get_excel_files(config)
-        if not excel_files:
-            print("未找到符合条件的Excel文件")
-            return
 
-        print(f"找到 {len(excel_files)} 个符合条件的文件")
+def parse_date(date_value):
+    """将日期值转换为datetime.date对象"""
+    if isinstance(date_value, datetime):
+        return date_value.date()
 
-        # 处理所有单据
-        for order_date, order_number, material_code in input_pairs:
-            print(f"\n处理订单: {order_date} {order_number} (物料编码: {material_code})")
-            success_count = 0
+    if isinstance(date_value, str):
+        for fmt in ('%Y-%m-%d', '%Y/%m/%d', '%m/%d/%Y', '%Y%m%d'):
+            try:
+                return datetime.strptime(date_value, fmt).date()
+            except ValueError:
+                continue
 
-            for file_path in excel_files:
-                if process_excel_file(file_path, config.OUTPUT_DIR, order_date, order_number, material_code, config):
-                    success_count += 1
-
-            print(f"订单 {order_number} 处理完成: 成功 {success_count} 个, 失败 {len(excel_files) - success_count} 个")
-
-    except Exception as e:
-        print(f"程序执行失败: {e}")
-        return 1
-
-    return 0
+    return None
 
 
 def get_excel_files(config):
@@ -725,6 +683,118 @@ def get_excel_files(config):
             excel_files.append(os.path.join(root, file))
 
     return excel_files
+
+
+def main():
+    """程序主入口"""
+    try:
+        # 获取销售明细中的所有不同物料编码
+        material_codes = get_unique_material_codes()
+
+        if not material_codes:
+            print("未在销售明细中找到有效的物料编码，程序退出")
+            return
+
+        print(f"找到 {len(material_codes)} 种不同的物料编码: {', '.join(material_codes)}")
+
+        # 为每种物料编码处理相应的订单
+        for material_code in material_codes:
+            print(f"\n\n===== 处理物料编码 {material_code} 的订单 =====")
+
+            # 创建对应物料编码的配置实例
+            config = Config(material_code)
+
+            print(f"\n使用配置:")
+            print(f"  源目录: {config.SOURCE_DIR}")
+            print(f"  输出目录: {config.OUTPUT_DIR}")
+            print(f"  PDF输出目录: {config.PDF_OUTPUT_DIR}")
+            print(f"  销售明细文件: {config.SALES_DETAIL_FILE}")
+            print(f"  配置文件: {config.CONFIG_FILE}")
+            print(
+                f"  处理模式: 实发数量>6000的单据{'✓' if config.PROCESS_MODE['large_quantity'] else '✗'}, 最近且实发数量<6000的单据{'✓' if config.PROCESS_MODE['closest_small_quantity'] else '✗'}")
+
+            # 从销售明细Excel文件获取该物料编码的单据对
+            input_pairs = get_input_pairs(config, material_code)
+            if not input_pairs:
+                print(f"未找到物料编码为 {material_code} 的符合条件的数据，跳过处理")
+                continue
+
+            # 获取符合条件的Excel文件
+            excel_files = get_excel_files(config)
+            if not excel_files:
+                print(f"未找到物料编码为 {material_code} 的符合条件的Excel文件，跳过处理")
+                continue
+
+            print(f"找到 {len(excel_files)} 个符合条件的文件")
+
+            # 处理所有单据
+            for order_date, order_number, material_code in input_pairs:
+                print(f"\n处理订单: {order_date} {order_number} (物料编码: {material_code})")
+                success_count = 0
+
+                for file_path in excel_files:
+                    if process_excel_file(file_path, config.OUTPUT_DIR, order_date, order_number, material_code,
+                                          config):
+                        success_count += 1
+
+                print(
+                    f"订单 {order_number} 处理完成: 成功 {success_count} 个, 失败 {len(excel_files) - success_count} 个")
+
+    except Exception as e:
+        print(f"程序执行失败: {e}")
+        return 1
+
+    return 0
+
+
+def get_unique_material_codes():
+    """从销售明细中提取所有不同的物料编码"""
+    try:
+        if not os.path.exists(Config.SALES_DETAIL_FILE):
+            raise FileNotFoundError(f"销售明细文件不存在 - {Config.SALES_DETAIL_FILE}")
+
+        # 打开销售明细Excel文件
+        workbook = openpyxl.load_workbook(Config.SALES_DETAIL_FILE, data_only=True)
+        sheet = workbook.active
+
+        # 获取表头行，确定物料编码列索引
+        header_row = next(sheet.iter_rows(min_row=1, max_row=1, values_only=True))
+        material_col = None
+
+        # 查找物料编码列对应的索引
+        for idx, cell_value in enumerate(header_row):
+            if cell_value is None:
+                continue
+            cell_value = str(cell_value).strip().lower()
+            if '物料编码' in cell_value:
+                material_col = idx
+                break
+
+        # 检查是否找到了物料编码列
+        if material_col is None:
+            raise ValueError("在销售明细文件中找不到物料编码列")
+
+        # 从第二行开始遍历数据行，收集所有不同的物料编码
+        material_codes = set()
+        for row in sheet.iter_rows(min_row=2, values_only=True):
+            # 跳过空行
+            if not any(row):
+                continue
+
+            material_code = row[material_col]
+            if material_code is not None:
+                material_codes.add(str(material_code))
+
+        workbook.close()
+
+        if not material_codes:
+            print("警告: 销售明细中未找到任何物料编码")
+
+        return list(material_codes)
+
+    except Exception as e:
+        print(f"从销售明细提取物料编码时出错: {e}")
+        return []
 
 
 if __name__ == "__main__":
