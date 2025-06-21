@@ -33,7 +33,7 @@ class Config:
     # 文件匹配条件
     FILE_FILTERS = {
         'extensions': ['.xlsx', '.xls'],
-        'keywords': ['12302-500240', '模板']
+        'keywords': ['310100108', '模板']
     }
 
 
