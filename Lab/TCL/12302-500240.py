@@ -41,12 +41,10 @@ class Config:
 def generate_random_numbers(existing_values, value_range, ensure_first_larger=False):
     """
     生成两个不重复的随机数，可配置确保第一个数大于第二个数
-
     参数:
         existing_values (set): 已存在的值集合，用于避免重复
         value_range (tuple): 范围配置 (最小值, 最大值, 最小差值)
         ensure_first_larger (bool): 是否确保第一个数大于第二个数
-
     返回:
         tuple: 两个不重复的随机数
     """
