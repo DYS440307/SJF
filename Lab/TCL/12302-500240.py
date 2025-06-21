@@ -15,34 +15,119 @@ class Config:
     OUTPUT_DIR = r"E:\System\desktop\PY\实验室"
     # 销售明细Excel文件路径
     SALES_DETAIL_FILE = r"Z:\3-品质部\实验室\邓洋枢\1-实验室相关文件\3-周期验证\TCL销售明细.xlsx"
+    # 配置文件路径
+    CONFIG_FILE = os.path.join(SOURCE_DIR, "310100108配置文件.txt")
 
     # PDF输出配置
     PDF_OUTPUT_DIR = os.path.join(OUTPUT_DIR, "PDF输出")
-
-    # 随机数生成范围配置 (最小值, 最大值, 最小差值)
-    # B_C范围: 确保B列值大于C列值，差值至少为min_diff
-    RANGE_CONFIG = {
-        'B_C': (140, 150, 2.1),  # B列和C列范围
-        'D_E': (5.8, 6.125, 0.12),  # D列和E列范围
-        'F_G': (72.3, 74.7, 0.12),  # F列和G列范围
-        'H_I': (3.8, 6.9, 0.81),  # H列和I列范围
-    }
-
-    # 数据填充区域（行范围）
-    ROW_START = 12
-    ROW_END = 16  # 包含此行
-
-    # 文件匹配条件
-    FILE_FILTERS = {
-        'extensions': ['.xlsx', '.xls'],
-        'keywords': ['310100108', '模板']
-    }
 
     # 处理模式配置
     PROCESS_MODE = {
         'large_quantity': True,  # 处理实发数量>6000的单据
         'closest_small_quantity': True  # 处理最近且实发数量<6000的单据
     }
+
+    def __init__(self):
+        """初始化配置，从文件加载动态配置"""
+        self.load_config_from_file()
+
+    def load_config_from_file(self):
+        """从配置文件加载动态配置"""
+        if not os.path.exists(self.CONFIG_FILE):
+            raise FileNotFoundError(f"配置文件不存在 - {self.CONFIG_FILE}")
+
+        try:
+            with open(self.CONFIG_FILE, 'r', encoding='utf-8') as file:
+                lines = file.readlines()
+
+            config_section = None
+            self.RANGE_CONFIG = {}
+            self.FILE_FILTERS = {'extensions': [], 'keywords': []}
+
+            for line in lines:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+
+                # 检测配置区域
+                if line.startswith('[') and line.endswith(']'):
+                    config_section = line[1:-1].strip()
+                    continue
+
+                # 解析配置项
+                if config_section == 'RANGE_CONFIG':
+                    parts = line.split('=')
+                    if len(parts) == 2:
+                        key = parts[0].strip()
+                        try:
+                            # 解析元组值
+                            values = parts[1].strip()
+                            # 移除括号并分割
+                            values = values.strip('()').split(',')
+                            values = [float(v.strip()) for v in values if v.strip()]
+                            if len(values) == 3:
+                                self.RANGE_CONFIG[key] = tuple(values)
+                        except Exception as e:
+                            raise ValueError(f"解析RANGE_CONFIG配置项 '{line}' 失败: {e}")
+
+                elif config_section == 'DATA_RANGE':
+                    parts = line.split('=')
+                    if len(parts) == 2:
+                        key = parts[0].strip()
+                        try:
+                            value = int(parts[1].strip())
+                            if key == 'ROW_START':
+                                self.ROW_START = value
+                            elif key == 'ROW_END':
+                                self.ROW_END = value
+                        except Exception as e:
+                            raise ValueError(f"解析DATA_RANGE配置项 '{line}' 失败: {e}")
+
+                elif config_section == 'FILE_FILTERS':
+                    parts = line.split('=')
+                    if len(parts) == 2:
+                        key = parts[0].strip()
+                        value = parts[1].strip()
+                        if key == 'extensions':
+                            # 解析扩展名列表
+                            exts = [ext.strip() for ext in value.split(',') if ext.strip()]
+                            self.FILE_FILTERS['extensions'] = exts
+                        elif key == 'keywords':
+                            # 解析关键词列表
+                            keywords = [kw.strip() for kw in value.split(',') if kw.strip()]
+                            self.FILE_FILTERS['keywords'] = keywords
+
+            # 验证配置是否完整
+            if not self.validate_config():
+                raise ValueError("配置文件不完整或包含无效配置")
+
+        except Exception as e:
+            raise Exception(f"读取配置文件时出错: {e}")
+
+    def validate_config(self):
+        """验证配置是否完整有效"""
+        # 验证RANGE_CONFIG
+        required_ranges = {'B_C', 'D_E', 'F_G', 'H_I'}
+        if not all(key in self.RANGE_CONFIG for key in required_ranges):
+            return False
+        if not all(len(v) == 3 and all(isinstance(x, (int, float)) for x in v) for v in self.RANGE_CONFIG.values()):
+            return False
+
+        # 验证ROW_START和ROW_END
+        if not (isinstance(self.ROW_START, int) and isinstance(self.ROW_END, int) and self.ROW_START <= self.ROW_END):
+            return False
+
+        # 验证FILE_FILTERS
+        if not ('extensions' in self.FILE_FILTERS and 'keywords' in self.FILE_FILTERS):
+            return False
+        if not (isinstance(self.FILE_FILTERS['extensions'], list) and isinstance(self.FILE_FILTERS['keywords'], list)):
+            return False
+        if not all(isinstance(ext, str) for ext in self.FILE_FILTERS['extensions']):
+            return False
+        if not all(isinstance(kw, str) for kw in self.FILE_FILTERS['keywords']):
+            return False
+
+        return True
 
 
 # ===== 功能函数 =====
@@ -277,8 +362,7 @@ def get_large_quantity_pairs(config):
 
     try:
         if not os.path.exists(config.SALES_DETAIL_FILE):
-            print(f"错误: 销售明细文件不存在 - {config.SALES_DETAIL_FILE}")
-            return pairs
+            raise FileNotFoundError(f"销售明细文件不存在 - {config.SALES_DETAIL_FILE}")
 
         # 打开销售明细Excel文件
         workbook = openpyxl.load_workbook(config.SALES_DETAIL_FILE, data_only=True)
@@ -311,8 +395,7 @@ def get_large_quantity_pairs(config):
                        [('日期', date_col), ('单据编号', order_col), ('物料编码', material_col),
                         ('实发数量', quantity_col)]
                        if col_idx is None]
-            print(f"错误: 在销售明细文件中找不到以下列: {', '.join(missing)}")
-            return pairs
+            raise ValueError(f"在销售明细文件中找不到以下列: {', '.join(missing)}")
 
         # 从第二行开始遍历数据行
         processed_orders = set()  # 用于记录已处理的订单编号，避免重复
@@ -329,7 +412,7 @@ def get_large_quantity_pairs(config):
             try:
                 quantity = float(row[quantity_col]) if row[quantity_col] is not None else 0
             except (ValueError, TypeError):
-                quantity = 0
+                raise ValueError(f"无法将实发数量转换为数值: {row[quantity_col]}")
 
             # 检查条件：实发数量 > 6000 且订单编号未处理过
             if quantity > 6000 and order_number not in processed_orders:
@@ -359,13 +442,11 @@ def get_large_quantity_pairs(config):
                                 except ValueError:
                                     continue
                             else:
-                                print(f"警告: 无法解析日期格式 '{order_date}'，使用原始值")
-                                formatted_date = str(order_date)
+                                raise ValueError(f"无法解析日期格式 '{order_date}'")
                         else:
-                            formatted_date = str(order_date)
+                            raise ValueError(f"日期格式不支持: {type(order_date).__name__}")
                     except Exception as e:
-                        print(f"警告: 日期处理错误 '{order_date}': {e}，使用原始值")
-                        formatted_date = str(order_date)
+                        raise ValueError(f"日期处理错误 '{order_date}': {e}")
 
                 if formatted_date and material_code is not None:
                     pairs.append((formatted_date, order_number, material_code))
@@ -381,7 +462,7 @@ def get_large_quantity_pairs(config):
         return pairs
 
     except Exception as e:
-        print(f"读取销售明细文件时出错: {e}")
+        print(f"获取大数量单据时出错: {e}")
         return pairs
 
 
@@ -401,8 +482,7 @@ def get_closest_small_quantity_pair(config):
 
     try:
         if not os.path.exists(config.SALES_DETAIL_FILE):
-            print(f"错误: 销售明细文件不存在 - {config.SALES_DETAIL_FILE}")
-            return None
+            raise FileNotFoundError(f"销售明细文件不存在 - {config.SALES_DETAIL_FILE}")
 
         # 打开销售明细Excel文件
         workbook = openpyxl.load_workbook(config.SALES_DETAIL_FILE, data_only=True)
@@ -435,8 +515,7 @@ def get_closest_small_quantity_pair(config):
                        [('日期', date_col), ('单据编号', order_col), ('物料编码', material_col),
                         ('实发数量', quantity_col)]
                        if col_idx is None]
-            print(f"错误: 在销售明细文件中找不到以下列: {', '.join(missing)}")
-            return None
+            raise ValueError(f"在销售明细文件中找不到以下列: {', '.join(missing)}")
 
         # 从第二行开始遍历数据行
         for row in sheet.iter_rows(min_row=2, values_only=True):
@@ -452,7 +531,7 @@ def get_closest_small_quantity_pair(config):
             try:
                 quantity = float(row[quantity_col]) if row[quantity_col] is not None else 0
             except (ValueError, TypeError):
-                quantity = 0
+                continue
 
             # 检查条件：实发数量 < 6000
             if quantity < 6000:
@@ -470,8 +549,7 @@ def get_closest_small_quantity_pair(config):
                                     break
                                 except ValueError:
                                     continue
-                    except Exception as e:
-                        print(f"警告: 日期处理错误 '{order_date}': {e}")
+                    except Exception:
                         continue
 
                 if date_obj and material_code is not None:
@@ -496,8 +574,54 @@ def get_closest_small_quantity_pair(config):
             return None
 
     except Exception as e:
-        print(f"读取销售明细文件时出错: {e}")
+        print(f"获取小数量单据时出错: {e}")
         return None
+
+
+def main():
+    """程序主入口"""
+    try:
+        # 创建配置实例
+        config = Config()
+
+        print(f"\n使用配置:")
+        print(f"  源目录: {config.SOURCE_DIR}")
+        print(f"  输出目录: {config.OUTPUT_DIR}")
+        print(f"  PDF输出目录: {config.PDF_OUTPUT_DIR}")
+        print(f"  销售明细文件: {config.SALES_DETAIL_FILE}")
+        print(
+            f"  处理模式: 实发数量>6000的单据{'✓' if config.PROCESS_MODE['large_quantity'] else '✗'}, 最近且实发数量<6000的单据{'✓' if config.PROCESS_MODE['closest_small_quantity'] else '✗'}")
+
+        # 从销售明细Excel文件获取单据对
+        input_pairs = get_input_pairs(config)
+        if not input_pairs:
+            print("未找到符合条件的数据，程序退出")
+            return
+
+        # 获取符合条件的Excel文件
+        excel_files = get_excel_files(config)
+        if not excel_files:
+            print("未找到符合条件的Excel文件")
+            return
+
+        print(f"找到 {len(excel_files)} 个符合条件的文件")
+
+        # 处理所有单据
+        for order_date, order_number, material_code in input_pairs:
+            print(f"\n处理订单: {order_date} {order_number} (物料编码: {material_code})")
+            success_count = 0
+
+            for file_path in excel_files:
+                if process_excel_file(file_path, config.OUTPUT_DIR, order_date, order_number, material_code, config):
+                    success_count += 1
+
+            print(f"订单 {order_number} 处理完成: 成功 {success_count} 个, 失败 {len(excel_files) - success_count} 个")
+
+    except Exception as e:
+        print(f"程序执行失败: {e}")
+        return 1
+
+    return 0
 
 
 def get_excel_files(config):
@@ -526,45 +650,6 @@ def get_excel_files(config):
             excel_files.append(os.path.join(root, file))
 
     return excel_files
-
-
-def main():
-    """程序主入口"""
-    # 创建配置实例
-    config = Config()
-
-    print(f"\n使用配置:")
-    print(f"  源目录: {config.SOURCE_DIR}")
-    print(f"  输出目录: {config.OUTPUT_DIR}")
-    print(f"  PDF输出目录: {config.PDF_OUTPUT_DIR}")
-    print(f"  销售明细文件: {config.SALES_DETAIL_FILE}")
-    print(
-        f"  处理模式: 实发数量>6000的单据{'✓' if config.PROCESS_MODE['large_quantity'] else '✗'}, 最近且实发数量<6000的单据{'✓' if config.PROCESS_MODE['closest_small_quantity'] else '✗'}")
-
-    # 从销售明细Excel文件获取单据对
-    input_pairs = get_input_pairs(config)
-    if not input_pairs:
-        print("未找到符合条件的数据，程序退出")
-        return
-
-    # 获取符合条件的Excel文件
-    excel_files = get_excel_files(config)
-    if not excel_files:
-        print("未找到符合条件的Excel文件")
-        return
-
-    print(f"找到 {len(excel_files)} 个符合条件的文件")
-
-    # 处理所有单据
-    for order_date, order_number, material_code in input_pairs:
-        print(f"\n处理订单: {order_date} {order_number} (物料编码: {material_code})")
-        success_count = 0
-
-        for file_path in excel_files:
-            if process_excel_file(file_path, config.OUTPUT_DIR, order_date, order_number, material_code, config):
-                success_count += 1
-
-        print(f"订单 {order_number} 处理完成: 成功 {success_count} 个, 失败 {len(excel_files) - success_count} 个")
 
 
 if __name__ == "__main__":
