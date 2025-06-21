@@ -13,6 +13,8 @@ class Config:
     # 文件路径配置
     SOURCE_DIR = r"Z:\3-品质部\实验室\邓洋枢\1-实验室相关文件\3-周期验证\2025年\TCL\12302-500240(310100062)\(310100108)模板"
     OUTPUT_DIR = r"E:\System\desktop\PY\实验室"
+    # 销售明细Excel文件路径
+    SALES_DETAIL_FILE = r"Z:\3-品质部\实验室\邓洋枢\1-实验室相关文件\3-周期验证\TCL销售明细.xlsx"
 
     # PDF输出配置
     PDF_OUTPUT_DIR = os.path.join(OUTPUT_DIR, "PDF输出")
@@ -41,10 +43,12 @@ class Config:
 def generate_random_numbers(existing_values, value_range, ensure_first_larger=False):
     """
     生成两个不重复的随机数，可配置确保第一个数大于第二个数
+
     参数:
         existing_values (set): 已存在的值集合，用于避免重复
         value_range (tuple): 范围配置 (最小值, 最大值, 最小差值)
         ensure_first_larger (bool): 是否确保第一个数大于第二个数
+
     返回:
         tuple: 两个不重复的随机数
     """
@@ -222,47 +226,115 @@ def excel_to_pdf(excel_path, pdf_path):
         time.sleep(1)  # 等待Excel完全退出
 
 
-def get_input_pairs():
+def get_input_pairs(config):
     """
-    获取用户输入的日期和订单编号对
+    从销售明细Excel文件中获取日期和订单编号对
+    条件：物料编码对应实发数量 > 6000
+
+    参数:
+        config (Config): 配置对象
 
     返回:
         list: 包含元组 (日期, 订单编号) 的列表
     """
     pairs = []
-    print("\n请输入日期和订单编号对（格式：2025/6/12	XSCKD002748）")
-    print("每行一对，输入空行结束")
 
-    print("示例输入:")
-    print("2025/6/12	XSCKD002748")
-    print("2025/6/7	XSCKD002730")
-    print("（直接粘贴多行也可以）")
+    try:
+        if not os.path.exists(config.SALES_DETAIL_FILE):
+            print(f"错误: 销售明细文件不存在 - {config.SALES_DETAIL_FILE}")
+            return pairs
 
-    print("\n开始输入:")
-    while True:
-        user_input = input().strip()
-        if not user_input:
-            break
+        # 打开销售明细Excel文件
+        workbook = openpyxl.load_workbook(config.SALES_DETAIL_FILE, data_only=True)
+        sheet = workbook.active
 
-        try:
-            parts = user_input.split()
-            if len(parts) != 2:
-                print("输入格式错误，请使用 '日期 订单编号' 格式")
+        # 获取表头行，确定各列索引
+        header_row = next(sheet.iter_rows(min_row=1, max_row=1, values_only=True))
+        date_col = None
+        order_col = None
+        material_col = None
+        quantity_col = None
+
+        # 查找各列对应的索引
+        for idx, cell_value in enumerate(header_row):
+            if cell_value is None:
+                continue
+            cell_value = str(cell_value).strip().lower()
+            if '日期' in cell_value:
+                date_col = idx
+            elif '单据编号' in cell_value:
+                order_col = idx
+            elif '物料编码' in cell_value:
+                material_col = idx
+            elif '实发数量' in cell_value:
+                quantity_col = idx
+
+        # 检查是否找到了所有需要的列
+        if any(col is None for col in [date_col, order_col, material_col, quantity_col]):
+            missing = [col_name for col_name, col_idx in
+                       [('日期', date_col), ('单据编号', order_col), ('物料编码', material_col),
+                        ('实发数量', quantity_col)]
+                       if col_idx is None]
+            print(f"错误: 在销售明细文件中找不到以下列: {', '.join(missing)}")
+            return pairs
+
+        # 从第二行开始遍历数据行
+        processed_orders = set()  # 用于记录已处理的订单编号，避免重复
+        for row in sheet.iter_rows(min_row=2, values_only=True):
+            # 跳过空行
+            if not any(row):
                 continue
 
-            date_str, order_number = parts
-            date_parts = date_str.split('/')
-            if len(date_parts) == 3:
-                year, month, day = date_parts
-                formatted_date = f"{year}-{month.zfill(2)}-{day.zfill(2)}"
-                pairs.append((formatted_date, order_number))
-                print(f"已添加: {formatted_date} {order_number}")
-            else:
-                print("日期格式错误，请使用 YYYY/MM/DD 格式")
-        except Exception as e:
-            print(f"输入错误: {e}，请重试")
+            # 获取各列值
+            order_date = row[date_col]
+            order_number = row[order_col]
+            # 实发数量需要转换为数值类型
+            try:
+                quantity = float(row[quantity_col]) if row[quantity_col] is not None else 0
+            except (ValueError, TypeError):
+                quantity = 0
 
-    return pairs
+            # 检查条件：实发数量 > 6000 且订单编号未处理过
+            if quantity > 6000 and order_number not in processed_orders:
+                # 处理日期格式
+                if isinstance(order_date, datetime):
+                    formatted_date = order_date.strftime('%Y-%m-%d')
+                else:
+                    # 尝试解析字符串日期
+                    try:
+                        if isinstance(order_date, str):
+                            # 处理常见日期格式
+                            for fmt in ('%Y-%m-%d', '%Y/%m/%d', '%m/%d/%Y', '%Y%m%d'):
+                                try:
+                                    date_obj = datetime.strptime(order_date, fmt)
+                                    formatted_date = date_obj.strftime('%Y-%m-%d')
+                                    break
+                                except ValueError:
+                                    continue
+                            else:
+                                print(f"警告: 无法解析日期格式 '{order_date}'，使用原始值")
+                                formatted_date = str(order_date)
+                        else:
+                            formatted_date = str(order_date)
+                    except Exception as e:
+                        print(f"警告: 日期处理错误 '{order_date}': {e}，使用原始值")
+                        formatted_date = str(order_date)
+
+                pairs.append((formatted_date, order_number))
+                processed_orders.add(order_number)
+                print(f"已添加: {formatted_date} {order_number}")
+
+        workbook.close()
+        print(f"从销售明细文件中提取了 {len(pairs)} 个符合条件的订单")
+
+        if not pairs:
+            print("警告: 未找到实发数量大于6000的记录")
+
+        return pairs
+
+    except Exception as e:
+        print(f"读取销售明细文件时出错: {e}")
+        return pairs
 
 
 def get_excel_files(config):
@@ -302,11 +374,12 @@ def main():
     print(f"  源目录: {config.SOURCE_DIR}")
     print(f"  输出目录: {config.OUTPUT_DIR}")
     print(f"  PDF输出目录: {config.PDF_OUTPUT_DIR}")
+    print(f"  销售明细文件: {config.SALES_DETAIL_FILE}")
 
-    # 获取用户输入的日期和订单编号对
-    input_pairs = get_input_pairs()
+    # 从销售明细Excel文件获取日期和订单编号对
+    input_pairs = get_input_pairs(config)
     if not input_pairs:
-        print("未输入任何数据，程序退出")
+        print("未找到符合条件的数据，程序退出")
         return
 
     # 获取符合条件的Excel文件
