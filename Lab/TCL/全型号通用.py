@@ -13,7 +13,7 @@ class Config:
     # 基础路径配置
     BASE_DIR = r"Z:\3-品质部\实验室\邓洋枢\1-实验室相关文件\3-周期验证\2025年"
     OUTPUT_DIR = r"E:\System\desktop\PY\实验室"
-    SALES_DETAIL_FILE = r"Z:\3-品质部\实验室\邓洋枢\1-实验室相关文件\3-周期验证\TCL销售明细.xlsx"
+    SALES_DETAIL_FILE = r"Z:\3-品质部\实验室\邓洋枢\1-实验室相关文件\3-周期验证\销售明细.xlsx"
 
     # PDF输出配置
     PDF_OUTPUT_DIR = os.path.join(OUTPUT_DIR, "PDF输出")
