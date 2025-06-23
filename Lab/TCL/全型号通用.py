@@ -261,7 +261,7 @@ def process_excel_file(file_path, output_dir, order_date, order_number, material
     参数:
         file_path (str): 源Excel文件路径
         output_dir (str): 输出目录
-        order_date (str): 订单日期
+        order_date (str): 订单日期 (格式: YYYY/M/D)
         order_number (str): 订单编号
         material_code (str): 物料编码
         config (Config): 配置对象
@@ -270,9 +270,14 @@ def process_excel_file(file_path, output_dir, order_date, order_number, material
         bool: 处理是否成功
     """
     try:
-        # 基于物料编码创建子目录
+        # 从订单日期字符串提取年份和月份
+        year, month, _ = order_date.split('/')
+        month_folder = f"{year}年{month}月"
+
+        # 基于物料编码和月份创建子目录
         material_dir = os.path.join(output_dir, str(material_code))
-        os.makedirs(material_dir, exist_ok=True)
+        month_dir = os.path.join(material_dir, month_folder)
+        os.makedirs(month_dir, exist_ok=True)
 
         # 打开Excel工作簿
         workbook = openpyxl.load_workbook(file_path, data_only=False)
@@ -349,14 +354,15 @@ def process_excel_file(file_path, output_dir, order_date, order_number, material
         # 保存修改后的Excel文件
         file_name = os.path.basename(file_path)
         new_name = file_name.replace("模板", f"_{order_number}")
-        output_file_path = os.path.join(material_dir, new_name)
+        output_file_path = os.path.join(month_dir, new_name)
         workbook.save(output_file_path)
-        print(f"成功处理Excel: {file_name} -> {new_name} (物料编码: {material_code})")
+        print(f"成功处理Excel: {file_name} -> {new_name} (物料编码: {material_code}, 月份: {month_folder})")
 
         # 转换为PDF
         pdf_material_dir = os.path.join(config.PDF_OUTPUT_DIR, str(material_code))
-        os.makedirs(pdf_material_dir, exist_ok=True)
-        pdf_path = os.path.join(pdf_material_dir, os.path.splitext(new_name)[0] + ".pdf")
+        pdf_month_dir = os.path.join(pdf_material_dir, month_folder)
+        os.makedirs(pdf_month_dir, exist_ok=True)
+        pdf_path = os.path.join(pdf_month_dir, os.path.splitext(new_name)[0] + ".pdf")
 
         if excel_to_pdf(output_file_path, pdf_path):
             print(f"成功转换为PDF: {pdf_path}")
