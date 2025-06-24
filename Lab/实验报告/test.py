@@ -60,10 +60,10 @@ def process_excel_file(file_path):
         if df_imp_clean.empty:
             raise ValueError("'IMP原档'的A列中没有有效的数值")
 
-        # 对数据进行排序并使用二分查找
-        df_imp_sorted = df_imp_clean.sort_values('A').reset_index(drop=True)
-        closest_idx = find_closest_value(df_imp_sorted['A'])
-        corresponding_b_value = df_imp_sorted.loc[closest_idx, 'B']
+        # 直接使用二分查找（无需排序，因为数据已排序）
+        closest_idx = find_closest_value(df_imp_clean['A'])
+        # 获取对应的B列值（注意：现在索引是原始数据的索引）
+        corresponding_b_value = df_imp_clean.iloc[closest_idx]['B']
 
         # 读取ACR工作表
         try:
