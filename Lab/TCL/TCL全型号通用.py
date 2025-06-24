@@ -20,12 +20,12 @@ class Config:
 
     # 处理模式配置
     PROCESS_MODE = {
-        'large_quantity': True,  # 处理实发数量>6000的单据
-        'closest_small_quantity': True  # 处理最近且实发数量<6000的单据
+        'large_quantity': True,  # 处理实发数量>QUANTITY_THRESHOLD的单据
+        'closest_small_quantity': True  # 处理最近且实发数量<QUANTITY_THRESHOLD的单据
     }
 
-    # 实发数量阈值配置 - 提到最上面方便修改
-    QUANTITY_THRESHOLD = 6000
+    # 实发数量阈值配置
+    QUANTITY_THRESHOLD = 200
 
     # 动态查找的路径
     SOURCE_DIR = None
