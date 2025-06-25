@@ -9,6 +9,7 @@ FILE_PATH = r"E:\System\pic\A报告\IMP数据.xlsx"  # Excel文件路径
 A_RANGE_LOW = 200  # A列范围下限
 A_RANGE_HIGH = 400  # A列范围上限
 FIND_MAX = True  # True: 查找B列最大值, False: 查找B列最小值
+SPL_TARGETS = [200, 400, 500, 800]  # SPL原档查找目标值
 
 
 def find_nearest_value(df, target):
@@ -47,6 +48,7 @@ try:
     print(f"  文件路径: {FILE_PATH}")
     print(f"  A列范围: {A_RANGE_LOW}~{A_RANGE_HIGH}")
     print(f"  查找: {'最大值' if FIND_MAX else '最小值'}")
+    print(f"  SPL查找目标: {SPL_TARGETS}")
     start_time = time.time()
 
     # 读取Excel文件
@@ -312,6 +314,70 @@ try:
         print(f"Fb表数据验证完成: 执行了 {swap_count_fb} 次交换操作")
     else:
         print(f"没有找到符合条件的数据，'Fb'工作表保持为空")
+
+    # 处理SPL原档工作表
+    print(f"正在处理'SPL原档'工作表数据...")
+
+    try:
+        # 获取SPL原档中的数据
+        spl_df = excel_file.parse("SPL原档")
+
+        # 提取A列和B列的数据
+        spl_col_a = pd.to_numeric(spl_df.iloc[:, 0], errors='coerce').dropna()
+        spl_col_b = pd.to_numeric(spl_df.iloc[:, 1], errors='coerce').dropna()
+
+        # 合并A列和B列数据
+        spl_merged_df = pd.concat([spl_col_a, spl_col_b], axis=1).dropna()
+        spl_merged_df.columns = ['A', 'B']
+
+        if not spl_merged_df.empty:
+            # 创建或获取SPL工作表
+            if "SPL" in wb.sheetnames:
+                spl_sheet = wb["SPL"]
+            else:
+                spl_sheet = wb.create_sheet("SPL")
+
+            # 清空SPL工作表中已有的数据
+            for row in range(1, spl_sheet.max_row + 1):
+                for col in range(1, spl_sheet.max_column + 1):
+                    spl_sheet.cell(row=row, column=col).value = None
+
+            # 查找每个目标值最接近的A列值及其对应的B列值
+            nearest_values = []
+
+            for target in SPL_TARGETS:
+                if not spl_merged_df.empty:
+                    # 找到最接近目标值的A列值
+                    nearest_value = spl_merged_df.iloc[(spl_merged_df['A'] - target).abs().argsort()[:1]]
+
+                    if not nearest_value.empty:
+                        a_value = nearest_value.iloc[0]['A']
+                        b_value = nearest_value.iloc[0]['B']
+
+                        print(f"  在A列中找到最接近{target}的值: {a_value}")
+                        print(f"    对应的B列值为: {b_value}")
+
+                        nearest_values.append(b_value)
+                    else:
+                        print(f"  警告: 在A列中未找到接近{target}的值")
+                else:
+                    print(f"  警告: SPL原档中没有有效的数据")
+
+            # 计算B列值的平均值
+            if nearest_values:
+                average_value = sum(nearest_values) / len(nearest_values)
+
+                # 将平均值写入SPL工作表的第一行第一列
+                spl_sheet.cell(row=1, column=1).value = average_value
+
+                print(f"已将B列对应值的平均值 {average_value:.4f} 写入'SPL'工作表的第一行第一列")
+            else:
+                print(f"没有找到符合条件的数据，无法计算平均值")
+        else:
+            print(f"SPL原档中没有有效的数据")
+
+    except Exception as spl_e:
+        print(f"处理'SPL原档'工作表时发生错误: {spl_e}")
 
     # 保存修改
     print(f"正在保存修改后的Excel文件...")
