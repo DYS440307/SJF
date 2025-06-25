@@ -2,6 +2,7 @@ import pandas as pd
 import openpyxl
 from openpyxl.utils import get_column_letter
 import os
+from datetime import datetime, timedelta
 
 
 def find_report_data(report_id, lab_record_file):
@@ -48,13 +49,49 @@ def parse_m_column(m_value):
     return parts[:6]
 
 
+def calculate_time_difference(ws):
+    """计算F4单元格的值（D4时间减去B4日期并转换为小时，只保留整数部分）"""
+    try:
+        # 获取B4单元格的日期值
+        b4_value = ws['B4'].value
+        # 获取D4单元格的时间值
+        d4_value = ws['D4'].value
+
+        # 验证数据类型
+        if not isinstance(b4_value, (datetime, pd.Timestamp)):
+            print(f"错误: B4单元格不是有效的日期格式 - {b4_value}")
+            return
+
+        if not isinstance(d4_value, (datetime, pd.Timestamp)):
+            print(f"错误: D4单元格不是有效的时间格式 - {d4_value}")
+            return
+
+        # 确保日期时间包含日期部分
+        if isinstance(d4_value, datetime) and d4_value.date() == datetime(1900, 1, 1).date():
+            # 如果时间值没有日期信息，使用B4的日期
+            d4_datetime = datetime.combine(b4_value.date(), d4_value.time())
+        else:
+            d4_datetime = d4_value
+
+        # 计算时间差（小时）
+        time_delta = d4_datetime - b4_value
+        hours = int(time_delta.total_seconds() // 3600)  # 只保留整数部分
+
+        # 将结果写入F4单元格，格式化为"XH"
+        ws['F4'] = f"{hours}H"
+        print(f"已计算时间差并写入F4单元格: {hours}H")
+
+    except Exception as e:
+        print(f"计算时间差时出错: {e}")
+
+
 def write_to_report_template(report_data, template_file):
     """将提取的数据写入到试验报告模板中"""
     try:
         os.makedirs(os.path.dirname(template_file), exist_ok=True)
         print(f"正在打开试验报告模板: {template_file}")
         wb = openpyxl.load_workbook(template_file)
-        ws = wb.active
+        ws = wb.active  # 确保ws变量在使用前被正确定义
 
         # 基础数据映射
         cell_mapping = {
@@ -66,13 +103,18 @@ def write_to_report_template(report_data, template_file):
             'J3': 10,  # K列数据写入J3
             'L3': 11,  # L列数据写入L3
             'L2': 13,  # N列数据写入L2
-            'B2': 5  # F列数据写入B2（新增）
+            'B2': 5  # F列数据写入B2
         }
 
         # 填充基础数据
         for cell, col_idx in cell_mapping.items():
             if pd.notna(report_data.iloc[col_idx]):
-                ws[cell] = report_data.iloc[col_idx]
+                # 特殊处理日期时间格式
+                value = report_data.iloc[col_idx]
+                if isinstance(value, pd.Timestamp):
+                    value = value.to_pydatetime()
+
+                ws[cell] = value
                 print(f"已将数据从列 {get_column_letter(col_idx + 1)} 写入到单元格 {cell}")
             else:
                 print(f"列 {get_column_letter(col_idx + 1)} 数据为空，跳过单元格 {cell}")
@@ -106,8 +148,48 @@ def write_to_report_template(report_data, template_file):
                 ws[cell] = value
                 print(f"已将M列数据 '{value}' 写入到单元格 {cell}")
 
+        # 计算并写入时间差
+        calculate_time_difference(ws)
+
+        # 将B3和J3内容拼接后写入D1
+        b3_value = ws['B3'].value or ''
+        j3_value = ws['J3'].value or ''
+        d1_value = f"{b3_value}{j3_value}实验报告"
+        ws['D1'] = d1_value
+        print(f"已将B3和J3内容拼接后写入D1单元格: {d1_value}")
+
+        # 构建新的文件名：B3+L3+J3+L2，各部分之间用连字符连接
+        b3_value = ws['B3'].value or ''
+        l3_value = ws['L3'].value or ''
+        j3_value = ws['J3'].value or ''
+        l2_value = ws['L2'].value or ''
+
+        # 拼接文件名，使用连字符分隔各部分
+        file_name_parts = [b3_value, l3_value, j3_value, l2_value]
+        file_name = "-".join(part for part in file_name_parts if part)  # 过滤空部分
+
+        # 直接删除换行符
+        file_name = file_name.replace('\n', '')
+
+        # 增强非法字符过滤，处理其他隐藏字符
+        invalid_chars = r'\/:*?"<>|\r\t'
+        valid_filename = "".join(c for c in file_name if c not in invalid_chars)
+
+        # 确保文件名不为空
+        if not valid_filename:
+            valid_filename = "未命名报告"
+
+        # 修改工作表名称
+        ws.title = valid_filename[:31]  # Excel工作表名称最长31个字符
+
+        # 修改工作簿属性中的标题
+        wb.properties.title = valid_filename
+
+        # 修改文件保存名称
+        output_dir = os.path.dirname(template_file)
+        output_file = os.path.join(output_dir, f"{valid_filename}.xlsx")
+
         # 保存修改后的模板
-        output_file = template_file
         wb.save(output_file)
         print(f"试验报告已保存至: {output_file}")
 
