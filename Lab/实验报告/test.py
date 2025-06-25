@@ -322,59 +322,139 @@ try:
         # 获取SPL原档中的数据
         spl_df = excel_file.parse("SPL原档")
 
-        # 提取A列和B列的数据
-        spl_col_a = pd.to_numeric(spl_df.iloc[:, 0], errors='coerce').dropna()
-        spl_col_b = pd.to_numeric(spl_df.iloc[:, 1], errors='coerce').dropna()
-
-        # 合并A列和B列数据
-        spl_merged_df = pd.concat([spl_col_a, spl_col_b], axis=1).dropna()
-        spl_merged_df.columns = ['A', 'B']
-
-        if not spl_merged_df.empty:
-            # 创建或获取SPL工作表
-            if "SPL" in wb.sheetnames:
-                spl_sheet = wb["SPL"]
-            else:
-                spl_sheet = wb.create_sheet("SPL")
-
-            # 清空SPL工作表中已有的数据
-            for row in range(1, spl_sheet.max_row + 1):
-                for col in range(1, spl_sheet.max_column + 1):
-                    spl_sheet.cell(row=row, column=col).value = None
-
-            # 查找每个目标值最接近的A列值及其对应的B列值
-            nearest_values = []
-
-            for target in SPL_TARGETS:
-                if not spl_merged_df.empty:
-                    # 找到最接近目标值的A列值
-                    nearest_value = spl_merged_df.iloc[(spl_merged_df['A'] - target).abs().argsort()[:1]]
-
-                    if not nearest_value.empty:
-                        a_value = nearest_value.iloc[0]['A']
-                        b_value = nearest_value.iloc[0]['B']
-
-                        print(f"  在A列中找到最接近{target}的值: {a_value}")
-                        print(f"    对应的B列值为: {b_value}")
-
-                        nearest_values.append(b_value)
-                    else:
-                        print(f"  警告: 在A列中未找到接近{target}的值")
-                else:
-                    print(f"  警告: SPL原档中没有有效的数据")
-
-            # 计算B列值的平均值
-            if nearest_values:
-                average_value = sum(nearest_values) / len(nearest_values)
-
-                # 将平均值写入SPL工作表的第一行第一列
-                spl_sheet.cell(row=1, column=1).value = average_value
-
-                print(f"已将B列对应值的平均值 {average_value:.4f} 写入'SPL'工作表的第一行第一列")
-            else:
-                print(f"没有找到符合条件的数据，无法计算平均值")
+        # 创建或获取SPL工作表
+        if "SPL" in wb.sheetnames:
+            spl_sheet = wb["SPL"]
         else:
-            print(f"SPL原档中没有有效的数据")
+            spl_sheet = wb.create_sheet("SPL")
+
+        # 清空SPL工作表中已有的数据
+        for row in range(1, spl_sheet.max_row + 1):
+            for col in range(1, spl_sheet.max_column + 1):
+                spl_sheet.cell(row=row, column=col).value = None
+
+        # 获取SPL原档的总列数
+        total_columns = spl_df.shape[1]
+
+        if total_columns < 2:
+            print(f"SPL原档中至少需要两列数据")
+        else:
+            # 提取SPL原档A列数据
+            spl_col_a = pd.to_numeric(spl_df.iloc[:, 0], errors='coerce').dropna()
+
+            # 处理所有偶数列（B,D,F...）
+            for col_idx in range(1, total_columns, 2):
+                # 获取当前偶数列的数据
+                even_col = pd.to_numeric(spl_df.iloc[:, col_idx], errors='coerce').dropna()
+
+                # 合并A列和当前偶数列数据
+                merged_df = pd.concat([spl_col_a, even_col], axis=1).dropna()
+                merged_df.columns = ['A', 'Current']
+
+                if not merged_df.empty:
+                    # 获取当前列的字母表示(用于日志)
+                    col_letter = get_column_letter(col_idx + 1)
+                    print(f"  正在处理偶数列 {col_letter}...")
+
+                    # 查找A列中所有等于目标值的行，并记录对应的偶数列值
+                    target_values = []
+
+                    for target in SPL_TARGETS:
+                        # 找到A列中等于目标值的所有行
+                        target_rows = merged_df[merged_df['A'] == target]
+
+                        if not target_rows.empty:
+                            # 获取对应的偶数列值
+                            current_values = target_rows['Current'].tolist()
+
+                            # 如果有多个匹配值，取第一个
+                            if current_values:
+                                target_values.append(current_values[0])
+                                print(f"    在A列中找到值 {target}，对应的{col_letter}列值为 {current_values[0]}")
+                            else:
+                                print(f"    警告: 在A列中找到值 {target}，但对应的{col_letter}列值为空")
+                        else:
+                            # 如果没有找到完全匹配的值，使用最接近的值
+                            print(f"    警告: 在A列中未找到值 {target}，尝试查找最接近的值...")
+                            nearest_row = merged_df.iloc[(merged_df['A'] - target).abs().argsort()[:1]]
+
+                            if not nearest_row.empty:
+                                a_value = nearest_row.iloc[0]['A']
+                                current_value = nearest_row.iloc[0]['Current']
+
+                                # 存储对应的当前列值
+                                target_values.append(current_value)
+                                print(f"    在A列中找到最接近的值 {a_value}，对应的{col_letter}列值为 {current_value}")
+                            else:
+                                print(f"    警告: 在A列中未找到接近的值")
+
+                    # 计算当前偶数列的平均值并写入SPL工作表
+                    if target_values:
+                        # 计算平均值
+                        average_value = sum(target_values) / len(target_values)
+
+                        # 确定写入位置（B列对应A1，D列对应A2，依此类推）
+                        row_in_spl = (col_idx + 1) // 2
+                        spl_sheet.cell(row=row_in_spl, column=1).value = average_value
+                        print(
+                            f"    已将{col_letter}列对应值的平均值 {average_value:.4f} 写入'SPL'工作表的A列第{row_in_spl}行")
+                    else:
+                        print(f"    没有找到符合条件的数据，无法计算平均值")
+                else:
+                    print(f"  偶数列 {col_letter} 与A列合并后的数据为空")
+
+            print(f"SPL原档所有偶数列处理完成")
+
+            # 读取SPL表A列中的所有数据
+            print(f"正在分析'SPL'工作表数据...")
+            spl_data = []
+            max_row_spl = spl_sheet.max_row
+            for row in range(1, max_row_spl + 1):
+                cell_value = spl_sheet.cell(row=row, column=1).value
+                if cell_value is not None:
+                    spl_data.append(cell_value)
+
+            # 计算分割点
+            split_index_spl = len(spl_data) // 2
+
+            # 将后一半数据移至B列的起始行，并清空A列对应位置
+            print(f"正在重新排列'SPL'工作表数据...")
+            moved_values_spl = 0
+
+            for i in range(split_index_spl, len(spl_data)):
+                source_row = i + 1
+                target_row = (i - split_index_spl) + 1
+                spl_sheet.cell(row=target_row, column=2).value = spl_data[i]
+                spl_sheet.cell(row=source_row, column=1).value = None  # 清空A列原数据
+                moved_values_spl += 1
+
+            print(f"SPL表数据重新排列完成: 已移动 {moved_values_spl} 个值到B列")
+
+            # 比较SPL表AB两列相邻数据，确保A列数值大于B列
+            print(f"正在验证'SPL'工作表AB列数据关系...")
+            swap_count_spl = 0
+            max_compare_row_spl = max(spl_sheet.max_row, split_index_spl)
+
+            for row in range(1, max_compare_row_spl + 1):
+                a_value = spl_sheet.cell(row=row, column=1).value
+                b_value = spl_sheet.cell(row=row, column=2).value
+
+                # 尝试转换为数值
+                try:
+                    a_value = float(a_value) if a_value is not None else None
+                    b_value = float(b_value) if b_value is not None else None
+                except (ValueError, TypeError):
+                    continue
+
+                # 确保两个单元格都有数值
+                if a_value is not None and b_value is not None:
+                    # 如果A列值小于等于B列值，则交换
+                    if a_value <= b_value:
+                        spl_sheet.cell(row=row, column=1).value = b_value
+                        spl_sheet.cell(row=row, column=2).value = a_value
+                        swap_count_spl += 1
+
+            print(f"SPL表数据验证完成: 执行了 {swap_count_spl} 次交换操作")
 
     except Exception as spl_e:
         print(f"处理'SPL原档'工作表时发生错误: {spl_e}")
