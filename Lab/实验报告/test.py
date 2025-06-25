@@ -3,6 +3,11 @@ import openpyxl
 from openpyxl.utils import get_column_letter
 import time
 import numpy as np
+import os
+
+# 文件路径配置
+CONFIG_DIR = r"E:\System\pic\A报告\模板\配置文件"
+LAB_RECORD_FILE = r"Z:\3-品质部\实验室\邓洋枢\2-实验记录汇总表\2025年\老化实验记录.xlsx"
 
 
 def read_config(file_path):
@@ -143,10 +148,119 @@ def generate_spl_targets(spl_mode, a_range_low, a_range_high, step, fixed_target
         return fixed_targets
 
 
+def find_config_file(report_id):
+    """在老化实验记录中查找报告编号并返回对应的配置文件路径"""
+    try:
+        # 读取老化实验记录文件
+        print(f"正在读取老化实验记录文件: {LAB_RECORD_FILE}")
+        df = pd.read_excel(LAB_RECORD_FILE)
+
+        # 假设报告编号在第N列，这里遍历所有列查找
+        found = False
+        report_col = None
+
+        # 从最后一行开始向上查找
+        for col in df.columns:
+            for row_idx in reversed(df.index):
+                cell_value = df.at[row_idx, col]
+                if pd.notna(cell_value) and str(report_id) in str(cell_value):
+                    report_col = col
+                    found = True
+                    break
+            if found:
+                break
+
+        if not found:
+            raise ValueError(f"在老化实验记录中未找到报告编号: {report_id}")
+
+        print(f"找到报告编号 '{report_id}' 在列: {report_col}")
+
+        # 获取对应的第I列单元格内容
+        i_col_idx = 8  # 假设I列是第9列(索引为8)，根据实际情况调整
+        if i_col_idx >= len(df.columns):
+            raise ValueError(f"未找到第I列数据")
+
+        cell_value = df.at[row_idx, df.columns[i_col_idx]]
+        if pd.isna(cell_value):
+            raise ValueError(f"第I列对应单元格内容为空")
+
+        # 分割单元格内容并移除TCL
+        parts = [part.strip() for part in str(cell_value).split(';') if part.strip() != 'TCL']
+
+        if not parts:
+            raise ValueError(f"第I列单元格内容分割后没有有效关键字")
+
+        print(f"从第I列获取的有效关键字: {parts}")
+
+        # 在配置文件目录中查找匹配的配置文件
+        config_files = os.listdir(CONFIG_DIR)
+        matched_files = []
+
+        # 为每个关键字查找匹配的配置文件
+        for part in parts:
+            part_matched = False
+            # 尝试匹配包含所有关键字的单个配置文件
+            combined_keywords = part
+            for file in config_files:
+                if all(keyword.strip() in file for keyword in combined_keywords.split('；')) and file.endswith('.txt'):
+                    matched_files.append(os.path.join(CONFIG_DIR, file))
+                    part_matched = True
+                    print(f"  找到匹配的配置文件: {file}，匹配关键字: {combined_keywords}")
+                    break  # 找到一个匹配项后就退出循环
+
+            # 如果没有找到组合匹配，则尝试单独匹配每个关键字
+            if not part_matched:
+                for keyword in combined_keywords.split('；'):
+                    keyword = keyword.strip()
+                    if not keyword:
+                        continue
+                    for file in config_files:
+                        if keyword in file and file.endswith('.txt'):
+                            matched_files.append(os.path.join(CONFIG_DIR, file))
+                            part_matched = True
+                            print(f"  找到匹配的配置文件: {file}，匹配关键字: {keyword}")
+                            break  # 找到一个匹配项后就退出循环
+                    if part_matched:
+                        break  # 找到一个关键字匹配后就不再检查其他关键字
+
+            if not part_matched:
+                print(f"  警告: 未找到与关键字 '{part}' 匹配的配置文件")
+
+        # 移除重复的文件路径
+        matched_files = list(dict.fromkeys(matched_files))
+
+        if not matched_files:
+            raise ValueError(f"未找到匹配的配置文件，关键字: {parts}")
+
+        print(f"找到 {len(matched_files)} 个匹配的配置文件")
+        for file in matched_files:
+            print(f"  - {file}")
+
+        # 返回第一个匹配的配置文件
+        return matched_files[0]
+
+    except Exception as e:
+        print(f"查找配置文件时发生错误: {e}")
+        return None
+
+
 try:
+    # 获取用户输入的报告编号
+    report_id = input("请输入报告编号: ").strip()
+    if not report_id:
+        raise ValueError("报告编号不能为空")
+
+    print(f"正在查找报告编号 '{report_id}' 对应的配置文件...")
+
+    # 查找配置文件
+    config_file_path = find_config_file(report_id)
+    if not config_file_path:
+        raise ValueError("无法找到匹配的配置文件")
+
+    print(f"使用配置文件: {config_file_path}")
+
     # 读取配置文件
-    CONFIG_FILE_PATH = r"E:\System\pic\A报告\模板\配置文件\G0202-000313(310100108).txt"
-    config = read_config(CONFIG_FILE_PATH)
+    config = read_config(config_file_path)
     if not config:
         raise ValueError("无法读取配置文件或配置文件为空")
 
@@ -413,8 +527,7 @@ try:
         for i in range(split_index_fb, total_results):
             source_row = i + 1
             target_row = (i - split_index_fb) + 1
-            value = fb_sheet.cell(row=source_row, column=1).value
-            fb_sheet.cell(row=target_row, column=2).value = value
+            fb_sheet.cell(row=target_row, column=2).value = result_values[i]
             fb_sheet.cell(row=source_row, column=1).value = None  # 清空A列原数据
             moved_values_fb += 1
 
@@ -707,7 +820,7 @@ try:
 
             print(f"THD表数据重新排列完成: 已移动 {moved_values_thd} 个值到B列")
 
-            # 比较THD表AB两列相邻数据，确保A列数值小于B列
+            # 比较THD表AB两列相邻数据，确保B列数值小于A列
             print(f"正在验证'THD'工作表AB列数据关系...")
             swap_count_thd = 0
             max_compare_row_thd = max(thd_sheet.max_row, split_index_thd)
@@ -725,8 +838,8 @@ try:
 
                 # 确保两个单元格都有数值
                 if a_value is not None and b_value is not None:
-                    # 如果A列值大于等于B列值，则交换
-                    if a_value >= b_value:
+                    # 如果B列值大于等于A列值，则交换
+                    if b_value >= a_value:
                         thd_sheet.cell(row=row, column=1).value = b_value
                         thd_sheet.cell(row=row, column=2).value = a_value
                         swap_count_thd += 1
@@ -736,17 +849,16 @@ try:
     except Exception as thd_e:
         print(f"处理'THD原档'工作表时发生错误: {thd_e}")
 
-    # 保存修改
+    # 保存修改后的Excel文件
     print(f"正在保存修改后的Excel文件...")
-    wb.save(config['FILE_PATH'])
+    try:
+        wb.save(config['FILE_PATH'])
+        print(f"文件已成功保存到: {config['FILE_PATH']}")
+    except Exception as save_e:
+        print(f"保存文件时发生错误: {save_e}")
 
     end_time = time.time()
-    execution_time = end_time - start_time
+    print(f"脚本执行完成，耗时: {end_time - start_time:.2f}秒")
 
-    print(f"所有操作已成功完成!")
-    print(f"程序运行时间: {execution_time:.4f} 秒")
-
-except ValueError as ve:
-    print(f"配置错误: {ve}")
 except Exception as e:
-    print(f"执行过程中发生错误: {e}")
+    print(f"执行脚本时发生错误: {e}")
