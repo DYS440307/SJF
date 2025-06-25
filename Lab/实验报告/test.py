@@ -12,12 +12,16 @@ A_RANGE_HIGH = 400  # A列范围上限
 FIND_MAX = True  # True: 查找B列最大值, False: 查找B列最小值
 
 # SPL原档查找目标值配置 - 选择一种模式
-SPL_MODE = "CUSTOM"  # 可选: FIXED, RANGE, CUSTOM, RANGE_ALL
+SPL_MODE = "FIXED"  # 可选: FIXED, RANGE, CUSTOM, RANGE_ALL
 SPL_FIXED_TARGETS = [200, 400, 500, 800]  # 固定目标值列表
 SPL_RANGE_STEP = 20  # 范围模式的步长(仅当SPL_MODE为RANGE时有效)
 SPL_CUSTOM_TARGETS = [200, 300, 400, 500, 600, 700, 800]  # 自定义目标值列表
 SPL_RANGE_LOW = 500  # RANGE_ALL模式的下限
 SPL_RANGE_HIGH = 800  # RANGE_ALL模式的上限
+
+# THD原档配置
+THD_A_RANGE_LOW = 300  # THD原档A列范围下限
+THD_A_RANGE_HIGH = 10000  # THD原档A列范围上限
 
 
 def find_nearest_value(df, target):
@@ -82,6 +86,8 @@ try:
         print(f"  SPL查找范围: {SPL_RANGE_LOW}~{SPL_RANGE_HIGH} (处理范围内的所有值)")
     else:
         print(f"  SPL查找目标: {spl_targets} (共{len(spl_targets)}个值)")
+
+    print(f"  THD原档A列范围: {THD_A_RANGE_LOW}~{THD_A_RANGE_HIGH}")
 
     start_time = time.time()
 
@@ -512,6 +518,126 @@ try:
 
     except Exception as spl_e:
         print(f"处理'SPL原档'工作表时发生错误: {spl_e}")
+
+    # 处理THD原档工作表
+    print(f"正在处理'THD原档'工作表数据...")
+
+    try:
+        # 获取THD原档中的数据
+        thd_df = excel_file.parse("THD原档")
+
+        # 创建或获取THD工作表
+        if "THD" in wb.sheetnames:
+            thd_sheet = wb["THD"]
+        else:
+            thd_sheet = wb.create_sheet("THD")
+
+        # 清空THD工作表中已有的数据
+        for row in range(1, thd_sheet.max_row + 1):
+            for col in range(1, thd_sheet.max_column + 1):
+                thd_sheet.cell(row=row, column=col).value = None
+
+        # 获取THD原档的总列数
+        total_columns = thd_df.shape[1]
+
+        if total_columns < 2:
+            print(f"THD原档中至少需要两列数据")
+        else:
+            # 提取THD原档A列数据
+            thd_col_a = pd.to_numeric(thd_df.iloc[:, 0], errors='coerce').dropna()
+
+            # 处理所有偶数列（B,D,F...）
+            for col_idx in range(1, total_columns, 2):
+                # 获取当前偶数列的数据
+                even_col = pd.to_numeric(thd_df.iloc[:, col_idx], errors='coerce').dropna()
+
+                # 合并A列和当前偶数列数据
+                merged_df = pd.concat([thd_col_a, even_col], axis=1).dropna()
+                merged_df.columns = ['A', 'Current']
+
+                if not merged_df.empty:
+                    # 获取当前列的字母表示(用于日志)
+                    col_letter = get_column_letter(col_idx + 1)
+                    print(f"  正在处理偶数列 {col_letter}...")
+
+                    # 筛选A列在指定范围内的数据
+                    filtered_df = merged_df[(merged_df['A'] >= THD_A_RANGE_LOW) & (merged_df['A'] <= THD_A_RANGE_HIGH)]
+
+                    if not filtered_df.empty:
+                        # 找到偶数列的最大值
+                        max_value = filtered_df['Current'].max()
+
+                        # 找到对应的A列值
+                        max_row = filtered_df[filtered_df['Current'] == max_value].iloc[0]
+                        a_value = max_row['A']
+
+                        print(
+                            f"    在A列范围 {THD_A_RANGE_LOW}~{THD_A_RANGE_HIGH} 内找到{col_letter}列的最大值: {max_value}")
+                        print(f"    对应的A列值为: {a_value}")
+
+                        # 确定写入位置（B列对应A1，D列对应A2，依此类推）
+                        row_in_thd = (col_idx + 1) // 2
+                        thd_sheet.cell(row=row_in_thd, column=1).value = max_value
+                    else:
+                        print(f"    在A列中未找到范围在 {THD_A_RANGE_LOW}~{THD_A_RANGE_HIGH} 之间的值")
+                else:
+                    print(f"  偶数列 {col_letter} 与A列合并后的数据为空")
+
+            print(f"THD原档所有偶数列处理完成")
+
+            # 读取THD表A列中的所有数据
+            print(f"正在分析'THD'工作表数据...")
+            thd_data = []
+            max_row_thd = thd_sheet.max_row
+            for row in range(1, max_row_thd + 1):
+                cell_value = thd_sheet.cell(row=row, column=1).value
+                if cell_value is not None:
+                    thd_data.append(cell_value)
+
+            # 计算分割点
+            split_index_thd = len(thd_data) // 2
+
+            # 将后一半数据移至B列的起始行，并清空A列对应位置
+            print(f"正在重新排列'THD'工作表数据...")
+            moved_values_thd = 0
+
+            for i in range(split_index_thd, len(thd_data)):
+                source_row = i + 1
+                target_row = (i - split_index_thd) + 1
+                thd_sheet.cell(row=target_row, column=2).value = thd_data[i]
+                thd_sheet.cell(row=source_row, column=1).value = None  # 清空A列原数据
+                moved_values_thd += 1
+
+            print(f"THD表数据重新排列完成: 已移动 {moved_values_thd} 个值到B列")
+
+            # 比较THD表AB两列相邻数据，确保A列数值小于B列
+            print(f"正在验证'THD'工作表AB列数据关系...")
+            swap_count_thd = 0
+            max_compare_row_thd = max(thd_sheet.max_row, split_index_thd)
+
+            for row in range(1, max_compare_row_thd + 1):
+                a_value = thd_sheet.cell(row=row, column=1).value
+                b_value = thd_sheet.cell(row=row, column=2).value
+
+                # 尝试转换为数值
+                try:
+                    a_value = float(a_value) if a_value is not None else None
+                    b_value = float(b_value) if b_value is not None else None
+                except (ValueError, TypeError):
+                    continue
+
+                # 确保两个单元格都有数值
+                if a_value is not None and b_value is not None:
+                    # 如果A列值大于等于B列值，则交换
+                    if a_value >= b_value:
+                        thd_sheet.cell(row=row, column=1).value = b_value
+                        thd_sheet.cell(row=row, column=2).value = a_value
+                        swap_count_thd += 1
+
+            print(f"THD表数据验证完成: 执行了 {swap_count_thd} 次交换操作")
+
+    except Exception as thd_e:
+        print(f"处理'THD原档'工作表时发生错误: {thd_e}")
 
     # 保存修改
     print(f"正在保存修改后的Excel文件...")
