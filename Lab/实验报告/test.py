@@ -4,24 +4,97 @@ from openpyxl.utils import get_column_letter
 import time
 import numpy as np
 
-# 配置参数 - 可直接修改以下值
-TARGET_VALUE = 600  # ACR表查找目标值
-FILE_PATH = r"E:\System\pic\A报告\IMP数据.xlsx"  # Excel文件路径
-A_RANGE_LOW = 200  # A列范围下限
-A_RANGE_HIGH = 400  # A列范围上限
-FIND_MAX = True  # True: 查找B列最大值, False: 查找B列最小值
 
-# SPL原档查找目标值配置 - 选择一种模式
-SPL_MODE = "FIXED"  # 可选: FIXED, RANGE, CUSTOM, RANGE_ALL
-SPL_FIXED_TARGETS = [200, 400, 500, 800]  # 固定目标值列表
-SPL_RANGE_STEP = 20  # 范围模式的步长(仅当SPL_MODE为RANGE时有效)
-SPL_CUSTOM_TARGETS = [200, 300, 400, 500, 600, 700, 800]  # 自定义目标值列表
-SPL_RANGE_LOW = 500  # RANGE_ALL模式的下限
-SPL_RANGE_HIGH = 800  # RANGE_ALL模式的上限
+def read_config(file_path):
+    """读取配置文件并返回配置字典"""
+    config = {}
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                # 跳过注释行和空行
+                if line.startswith('#') or not line:
+                    continue
+                # 解析配置项
+                key, value = line.split('=', 1)
+                config[key.strip()] = value.strip()
+        return config
+    except Exception as e:
+        print(f"读取配置文件时发生错误: {e}")
+        return None
 
-# THD原档配置
-THD_A_RANGE_LOW = 300  # THD原档A列范围下限
-THD_A_RANGE_HIGH = 10000  # THD原档A列范围上限
+
+def parse_config(config):
+    """解析配置字典并返回结构化配置，不使用默认值"""
+    if not config:
+        raise ValueError("配置字典为空")
+
+    # 定义配置参数元数据（不包含默认值）
+    CONFIG_METADATA = {
+        # 基本配置
+        'TARGET_VALUE': {'type': int},
+        'FILE_PATH': {'type': str},
+        'A_RANGE_LOW': {'type': int},
+        'A_RANGE_HIGH': {'type': int},
+        'FIND_MAX': {'type': lambda x: x.lower() == 'true'},
+
+        # SPL原档配置
+        'SPL_MODE': {'type': str},
+        'SPL_FIXED_TARGETS': {'type': lambda x: [int(v) for v in x.split(',')]},
+        'SPL_RANGE_STEP': {'type': int},
+        'SPL_CUSTOM_TARGETS': {'type': lambda x: [int(v) for v in x.split(',')]},
+        'SPL_RANGE_LOW': {'type': int},
+        'SPL_RANGE_HIGH': {'type': int},
+
+        # THD原档配置
+        'THD_A_RANGE_LOW': {'type': int},
+        'THD_A_RANGE_HIGH': {'type': int}
+    }
+
+    # 自动解析配置，不使用默认值
+    parsed_config = {}
+    for key, meta in CONFIG_METADATA.items():
+        if key not in config:
+            raise ValueError(f"配置文件中缺少必需的参数: {key}")
+
+        try:
+            parsed_config[key] = meta['type'](config[key])
+        except Exception as e:
+            raise ValueError(f"解析配置项 '{key}' 时发生错误: {e}") from e
+
+    return parsed_config
+
+
+def validate_config(config):
+    """验证配置是否完整且有效"""
+    required_keys = [
+        'TARGET_VALUE', 'FILE_PATH', 'A_RANGE_LOW', 'A_RANGE_HIGH', 'FIND_MAX',
+        'SPL_MODE', 'SPL_FIXED_TARGETS', 'SPL_RANGE_STEP', 'SPL_CUSTOM_TARGETS',
+        'SPL_RANGE_LOW', 'SPL_RANGE_HIGH', 'THD_A_RANGE_LOW', 'THD_A_RANGE_HIGH'
+    ]
+
+    # 检查是否缺少必需的键
+    missing_keys = [key for key in required_keys if key not in config]
+    if missing_keys:
+        raise ValueError(f"配置文件缺少以下必需参数: {', '.join(missing_keys)}")
+
+    # 验证数值范围
+    if config['A_RANGE_LOW'] >= config['A_RANGE_HIGH']:
+        raise ValueError("A_RANGE_LOW必须小于A_RANGE_HIGH")
+
+    if config['SPL_RANGE_LOW'] >= config['SPL_RANGE_HIGH']:
+        raise ValueError("SPL_RANGE_LOW必须小于SPL_RANGE_HIGH")
+
+    if config['THD_A_RANGE_LOW'] >= config['THD_A_RANGE_HIGH']:
+        raise ValueError("THD_A_RANGE_LOW必须小于THD_A_RANGE_HIGH")
+
+    # 验证SPL_MODE值
+    valid_spl_modes = ['FIXED', 'RANGE', 'CUSTOM', 'RANGE_ALL']
+    if config['SPL_MODE'] not in valid_spl_modes:
+        raise ValueError(
+            f"无效的SPL_MODE值: {config['SPL_MODE']}，必须是{'FIXED', 'RANGE', 'CUSTOM', 'RANGE_ALL'}中的一个")
+
+    return True
 
 
 def find_nearest_value(df, target):
@@ -71,29 +144,47 @@ def generate_spl_targets(spl_mode, a_range_low, a_range_high, step, fixed_target
 
 
 try:
+    # 读取配置文件
+    CONFIG_FILE_PATH = r"E:\System\pic\A报告\模板\配置文件\G0202-000313(310100108).txt"
+    config = read_config(CONFIG_FILE_PATH)
+    if not config:
+        raise ValueError("无法读取配置文件或配置文件为空")
+
+    # 解析配置
+    config = parse_config(config)
+
+    # 验证配置
+    validate_config(config)
+
     print(f"开始执行Excel数据处理脚本")
     print(f"配置参数:")
-    print(f"  目标值: {TARGET_VALUE}")
-    print(f"  文件路径: {FILE_PATH}")
-    print(f"  A列范围: {A_RANGE_LOW}~{A_RANGE_HIGH}")
-    print(f"  查找: {'最大值' if FIND_MAX else '最小值'}")
+    for key, value in config.items():
+        print(f"  {key}: {value}")
 
     # 生成SPL目标值列表
-    spl_targets = generate_spl_targets(SPL_MODE, A_RANGE_LOW, A_RANGE_HIGH, SPL_RANGE_STEP, SPL_FIXED_TARGETS,
-                                       SPL_CUSTOM_TARGETS, SPL_RANGE_LOW, SPL_RANGE_HIGH)
-    print(f"  SPL查找模式: {SPL_MODE}")
-    if SPL_MODE == "RANGE_ALL":
-        print(f"  SPL查找范围: {SPL_RANGE_LOW}~{SPL_RANGE_HIGH} (处理范围内的所有值)")
+    spl_targets = generate_spl_targets(
+        config['SPL_MODE'],
+        config['A_RANGE_LOW'],
+        config['A_RANGE_HIGH'],
+        config['SPL_RANGE_STEP'],
+        config['SPL_FIXED_TARGETS'],
+        config['SPL_CUSTOM_TARGETS'],
+        config['SPL_RANGE_LOW'],
+        config['SPL_RANGE_HIGH']
+    )
+    print(f"  SPL查找模式: {config['SPL_MODE']}")
+    if config['SPL_MODE'] == "RANGE_ALL":
+        print(f"  SPL查找范围: {config['SPL_RANGE_LOW']}~{config['SPL_RANGE_HIGH']} (处理范围内的所有值)")
     else:
         print(f"  SPL查找目标: {spl_targets} (共{len(spl_targets)}个值)")
 
-    print(f"  THD原档A列范围: {THD_A_RANGE_LOW}~{THD_A_RANGE_HIGH}")
+    print(f"  THD原档A列范围: {config['THD_A_RANGE_LOW']}~{config['THD_A_RANGE_HIGH']}")
 
     start_time = time.time()
 
     # 读取Excel文件
     print(f"正在读取Excel文件...")
-    excel_file = pd.ExcelFile(FILE_PATH)
+    excel_file = pd.ExcelFile(config['FILE_PATH'])
 
     # 获取IMP原档中的数据
     print(f"正在解析'IMP原档'工作表...")
@@ -107,7 +198,7 @@ try:
 
     # 使用openpyxl将值写入ACR表
     print(f"准备写入'ACR'工作表...")
-    wb = openpyxl.load_workbook(FILE_PATH)
+    wb = openpyxl.load_workbook(config['FILE_PATH'])
     ws = wb["ACR"]
 
     # 处理所有奇数列(1,3,5...)及其后续偶数列(2,4,6...)
@@ -146,7 +237,7 @@ try:
             continue
 
         # 找到奇数列最接近目标值的值对应的偶数列的值
-        nearest_value = find_nearest_value(current_df, TARGET_VALUE)
+        nearest_value = find_nearest_value(current_df, config['TARGET_VALUE'])
 
         # 如果找不到合适的值，则跳过
         if nearest_value is None:
@@ -155,7 +246,7 @@ try:
             continue
 
         # 获取对应偶数列的值
-        nearest_row = current_df.iloc[(current_df.iloc[:, 0] - TARGET_VALUE).abs().argsort()[:1]]
+        nearest_row = current_df.iloc[(current_df.iloc[:, 0] - config['TARGET_VALUE']).abs().argsort()[:1]]
         value_to_write = nearest_row.iloc[0, 1]
 
         # 计算ACR表中的行号(从1开始，每对占一行)
@@ -262,7 +353,8 @@ try:
             continue
 
         # 筛选奇数列在指定范围内的数据
-        filtered_df = current_df[(current_df.iloc[:, 0] >= A_RANGE_LOW) & (current_df.iloc[:, 0] <= A_RANGE_HIGH)]
+        filtered_df = current_df[
+            (current_df.iloc[:, 0] >= config['A_RANGE_LOW']) & (current_df.iloc[:, 0] <= config['A_RANGE_HIGH'])]
 
         if not filtered_df.empty:
             # 重置索引以确保索引连续
@@ -274,7 +366,7 @@ try:
                 continue
 
             # 根据配置查找偶数列的最大值或最小值
-            if FIND_MAX:
+            if config['FIND_MAX']:
                 extreme_value = filtered_df.iloc[:, 1].max()
                 extreme_type = "最大值"
             else:
@@ -293,7 +385,7 @@ try:
                 even_col_value = extreme_row.iloc[1]
 
                 print(
-                    f"  在{get_column_letter(odd_col + 1)}列范围 {A_RANGE_LOW}~{A_RANGE_HIGH} 内找到{col_letter}列的{extreme_type}: {even_col_value}")
+                    f"  在{get_column_letter(odd_col + 1)}列范围 {config['A_RANGE_LOW']}~{config['A_RANGE_HIGH']} 内找到{col_letter}列的{extreme_type}: {even_col_value}")
                 print(f"    对应的{get_column_letter(odd_col + 1)}列值为: {odd_col_value}")
 
                 # 保存结果
@@ -301,7 +393,8 @@ try:
             else:
                 print(f"    警告: 未找到符合条件的行")
         else:
-            print(f"  在{get_column_letter(odd_col + 1)}列中未找到范围在 {A_RANGE_LOW}~{A_RANGE_HIGH} 之间的值")
+            print(
+                f"  在{get_column_letter(odd_col + 1)}列中未找到范围在 {config['A_RANGE_LOW']}~{config['A_RANGE_HIGH']} 之间的值")
 
     # 将结果按顺序写入Fb工作表的第一列
     if result_values:
@@ -399,15 +492,17 @@ try:
                     # 查找A列中所有在范围内的行，并记录对应的偶数列值
                     target_values = []
 
-                    if SPL_MODE == "RANGE_ALL":
+                    if config['SPL_MODE'] == "RANGE_ALL":
                         # 处理范围内的所有值
-                        filtered_df = merged_df[(merged_df['A'] >= SPL_RANGE_LOW) & (merged_df['A'] <= SPL_RANGE_HIGH)]
+                        filtered_df = merged_df[
+                            (merged_df['A'] >= config['SPL_RANGE_LOW']) & (merged_df['A'] <= config['SPL_RANGE_HIGH'])]
 
                         if not filtered_df.empty:
                             target_values = filtered_df['Current'].tolist()
-                            print(f"    在A列中找到{len(target_values)}个值在{SPL_RANGE_LOW}~{SPL_RANGE_HIGH}范围内")
+                            print(
+                                f"    在A列中找到{len(target_values)}个值在{config['SPL_RANGE_LOW']}~{config['SPL_RANGE_HIGH']}范围内")
                         else:
-                            print(f"    在A列中未找到值在{SPL_RANGE_LOW}~{SPL_RANGE_HIGH}范围内")
+                            print(f"    在A列中未找到值在{config['SPL_RANGE_LOW']}~{config['SPL_RANGE_HIGH']}范围内")
                     else:
                         # 处理指定目标值列表
                         missing_targets = []
@@ -450,7 +545,7 @@ try:
                         average_value = sum(target_values) / len(target_values)
 
                         # 记录缺失的目标值（如果有）
-                        if SPL_MODE != "RANGE_ALL" and missing_targets:
+                        if config['SPL_MODE'] != "RANGE_ALL" and missing_targets:
                             print(f"    注意: 在{col_letter}列中未找到以下目标值: {missing_targets}")
 
                         # 确定写入位置（B列对应A1，D列对应A2，依此类推）
@@ -561,7 +656,8 @@ try:
                     print(f"  正在处理偶数列 {col_letter}...")
 
                     # 筛选A列在指定范围内的数据
-                    filtered_df = merged_df[(merged_df['A'] >= THD_A_RANGE_LOW) & (merged_df['A'] <= THD_A_RANGE_HIGH)]
+                    filtered_df = merged_df[
+                        (merged_df['A'] >= config['THD_A_RANGE_LOW']) & (merged_df['A'] <= config['THD_A_RANGE_HIGH'])]
 
                     if not filtered_df.empty:
                         # 找到偶数列的最大值
@@ -572,14 +668,15 @@ try:
                         a_value = max_row['A']
 
                         print(
-                            f"    在A列范围 {THD_A_RANGE_LOW}~{THD_A_RANGE_HIGH} 内找到{col_letter}列的最大值: {max_value}")
+                            f"    在A列范围 {config['THD_A_RANGE_LOW']}~{config['THD_A_RANGE_HIGH']} 内找到{col_letter}列的最大值: {max_value}")
                         print(f"    对应的A列值为: {a_value}")
 
                         # 确定写入位置（B列对应A1，D列对应A2，依此类推）
                         row_in_thd = (col_idx + 1) // 2
                         thd_sheet.cell(row=row_in_thd, column=1).value = max_value
                     else:
-                        print(f"    在A列中未找到范围在 {THD_A_RANGE_LOW}~{THD_A_RANGE_HIGH} 之间的值")
+                        print(
+                            f"    在A列中未找到范围在 {config['THD_A_RANGE_LOW']}~{config['THD_A_RANGE_HIGH']} 之间的值")
                 else:
                     print(f"  偶数列 {col_letter} 与A列合并后的数据为空")
 
@@ -641,7 +738,7 @@ try:
 
     # 保存修改
     print(f"正在保存修改后的Excel文件...")
-    wb.save(FILE_PATH)
+    wb.save(config['FILE_PATH'])
 
     end_time = time.time()
     execution_time = end_time - start_time
@@ -649,5 +746,7 @@ try:
     print(f"所有操作已成功完成!")
     print(f"程序运行时间: {execution_time:.4f} 秒")
 
+except ValueError as ve:
+    print(f"配置错误: {ve}")
 except Exception as e:
     print(f"执行过程中发生错误: {e}")
