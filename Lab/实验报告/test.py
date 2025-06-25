@@ -2,6 +2,7 @@ import pandas as pd
 import openpyxl
 from openpyxl.utils import get_column_letter
 import time
+import numpy as np
 
 # 配置参数 - 可直接修改以下值
 TARGET_VALUE = 600  # ACR表查找目标值
@@ -9,7 +10,14 @@ FILE_PATH = r"E:\System\pic\A报告\IMP数据.xlsx"  # Excel文件路径
 A_RANGE_LOW = 200  # A列范围下限
 A_RANGE_HIGH = 400  # A列范围上限
 FIND_MAX = True  # True: 查找B列最大值, False: 查找B列最小值
-SPL_TARGETS = [200, 400, 500, 800]  # SPL原档查找目标值
+
+# SPL原档查找目标值配置 - 选择一种模式
+SPL_MODE = "CUSTOM"  # 可选: FIXED, RANGE, CUSTOM, RANGE_ALL
+SPL_FIXED_TARGETS = [200, 400, 500, 800]  # 固定目标值列表
+SPL_RANGE_STEP = 20  # 范围模式的步长(仅当SPL_MODE为RANGE时有效)
+SPL_CUSTOM_TARGETS = [200, 300, 400, 500, 600, 700, 800]  # 自定义目标值列表
+SPL_RANGE_LOW = 500  # RANGE_ALL模式的下限
+SPL_RANGE_HIGH = 800  # RANGE_ALL模式的上限
 
 
 def find_nearest_value(df, target):
@@ -41,6 +49,23 @@ def find_nearest_value(df, target):
     return df.iloc[nearest_idx]
 
 
+def generate_spl_targets(spl_mode, a_range_low, a_range_high, step, fixed_targets, custom_targets, range_low,
+                         range_high):
+    """根据配置生成SPL目标值列表"""
+    if spl_mode == "FIXED":
+        return fixed_targets
+    elif spl_mode == "RANGE":
+        return list(range(a_range_low, a_range_high + 1, step))
+    elif spl_mode == "CUSTOM":
+        return custom_targets
+    elif spl_mode == "RANGE_ALL":
+        print(f"警告: RANGE_ALL模式将处理A列中所有在{range_low}~{range_high}范围内的值")
+        return None  # 返回None表示处理范围内的所有值
+    else:
+        print(f"警告: 未知的SPL_MODE值 '{spl_mode}'，使用默认的固定目标值")
+        return fixed_targets
+
+
 try:
     print(f"开始执行Excel数据处理脚本")
     print(f"配置参数:")
@@ -48,7 +73,16 @@ try:
     print(f"  文件路径: {FILE_PATH}")
     print(f"  A列范围: {A_RANGE_LOW}~{A_RANGE_HIGH}")
     print(f"  查找: {'最大值' if FIND_MAX else '最小值'}")
-    print(f"  SPL查找目标: {SPL_TARGETS}")
+
+    # 生成SPL目标值列表
+    spl_targets = generate_spl_targets(SPL_MODE, A_RANGE_LOW, A_RANGE_HIGH, SPL_RANGE_STEP, SPL_FIXED_TARGETS,
+                                       SPL_CUSTOM_TARGETS, SPL_RANGE_LOW, SPL_RANGE_HIGH)
+    print(f"  SPL查找模式: {SPL_MODE}")
+    if SPL_MODE == "RANGE_ALL":
+        print(f"  SPL查找范围: {SPL_RANGE_LOW}~{SPL_RANGE_HIGH} (处理范围内的所有值)")
+    else:
+        print(f"  SPL查找目标: {spl_targets} (共{len(spl_targets)}个值)")
+
     start_time = time.time()
 
     # 读取Excel文件
@@ -356,42 +390,62 @@ try:
                     col_letter = get_column_letter(col_idx + 1)
                     print(f"  正在处理偶数列 {col_letter}...")
 
-                    # 查找A列中所有等于目标值的行，并记录对应的偶数列值
+                    # 查找A列中所有在范围内的行，并记录对应的偶数列值
                     target_values = []
 
-                    for target in SPL_TARGETS:
-                        # 找到A列中等于目标值的所有行
-                        target_rows = merged_df[merged_df['A'] == target]
+                    if SPL_MODE == "RANGE_ALL":
+                        # 处理范围内的所有值
+                        filtered_df = merged_df[(merged_df['A'] >= SPL_RANGE_LOW) & (merged_df['A'] <= SPL_RANGE_HIGH)]
 
-                        if not target_rows.empty:
-                            # 获取对应的偶数列值
-                            current_values = target_rows['Current'].tolist()
-
-                            # 如果有多个匹配值，取第一个
-                            if current_values:
-                                target_values.append(current_values[0])
-                                print(f"    在A列中找到值 {target}，对应的{col_letter}列值为 {current_values[0]}")
-                            else:
-                                print(f"    警告: 在A列中找到值 {target}，但对应的{col_letter}列值为空")
+                        if not filtered_df.empty:
+                            target_values = filtered_df['Current'].tolist()
+                            print(f"    在A列中找到{len(target_values)}个值在{SPL_RANGE_LOW}~{SPL_RANGE_HIGH}范围内")
                         else:
-                            # 如果没有找到完全匹配的值，使用最接近的值
-                            print(f"    警告: 在A列中未找到值 {target}，尝试查找最接近的值...")
-                            nearest_row = merged_df.iloc[(merged_df['A'] - target).abs().argsort()[:1]]
+                            print(f"    在A列中未找到值在{SPL_RANGE_LOW}~{SPL_RANGE_HIGH}范围内")
+                    else:
+                        # 处理指定目标值列表
+                        missing_targets = []
 
-                            if not nearest_row.empty:
-                                a_value = nearest_row.iloc[0]['A']
-                                current_value = nearest_row.iloc[0]['Current']
+                        for target in spl_targets:
+                            # 找到A列中等于目标值的所有行
+                            target_rows = merged_df[merged_df['A'] == target]
 
-                                # 存储对应的当前列值
-                                target_values.append(current_value)
-                                print(f"    在A列中找到最接近的值 {a_value}，对应的{col_letter}列值为 {current_value}")
+                            if not target_rows.empty:
+                                # 获取对应的偶数列值
+                                current_values = target_rows['Current'].tolist()
+
+                                # 如果有多个匹配值，取第一个
+                                if current_values:
+                                    target_values.append(current_values[0])
+                                    print(f"    在A列中找到值 {target}，对应的{col_letter}列值为 {current_values[0]}")
+                                else:
+                                    print(f"    警告: 在A列中找到值 {target}，但对应的{col_letter}列值为空")
+                                    missing_targets.append(target)
                             else:
-                                print(f"    警告: 在A列中未找到接近的值")
+                                # 如果没有找到完全匹配的值，使用最接近的值
+                                print(f"    警告: 在A列中未找到值 {target}，尝试查找最接近的值...")
+                                nearest_row = merged_df.iloc[(merged_df['A'] - target).abs().argsort()[:1]]
+
+                                if not nearest_row.empty:
+                                    a_value = nearest_row.iloc[0]['A']
+                                    current_value = nearest_row.iloc[0]['Current']
+
+                                    # 存储对应的当前列值
+                                    target_values.append(current_value)
+                                    print(
+                                        f"    在A列中找到最接近的值 {a_value}，对应的{col_letter}列值为 {current_value}")
+                                else:
+                                    print(f"    警告: 在A列中未找到接近的值")
+                                    missing_targets.append(target)
 
                     # 计算当前偶数列的平均值并写入SPL工作表
                     if target_values:
                         # 计算平均值
                         average_value = sum(target_values) / len(target_values)
+
+                        # 记录缺失的目标值（如果有）
+                        if SPL_MODE != "RANGE_ALL" and missing_targets:
+                            print(f"    注意: 在{col_letter}列中未找到以下目标值: {missing_targets}")
 
                         # 确定写入位置（B列对应A1，D列对应A2，依此类推）
                         row_in_spl = (col_idx + 1) // 2
