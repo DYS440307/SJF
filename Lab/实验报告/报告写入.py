@@ -154,7 +154,7 @@ def write_to_report_template(report_data, template_file):
         # 将B3和J3内容拼接后写入D1
         b3_value = ws['B3'].value or ''
         j3_value = ws['J3'].value or ''
-        d1_value = f"{b3_value}{j3_value}实验报告"
+        d1_value = f"{b3_value}{j3_value}试验报告"
         ws['D1'] = d1_value
         print(f"已将B3和J3内容拼接后写入D1单元格: {d1_value}")
 
