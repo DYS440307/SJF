@@ -267,6 +267,49 @@ try:
             fb_sheet.cell(row=i + 1, column=1).value = value
 
         print(f"已将所有结果按顺序写入'Fb'工作表的第一列")
+
+        # 将Fb工作表后一半数据移至B列
+        total_results = len(result_values)
+        split_index_fb = (total_results + 1) // 2  # 向上取整
+
+        print(f"正在重新排列'Fb'工作表数据...")
+        moved_values_fb = 0
+
+        for i in range(split_index_fb, total_results):
+            source_row = i + 1
+            target_row = (i - split_index_fb) + 1
+            value = fb_sheet.cell(row=source_row, column=1).value
+            fb_sheet.cell(row=target_row, column=2).value = value
+            fb_sheet.cell(row=source_row, column=1).value = None  # 清空A列原数据
+            moved_values_fb += 1
+
+        print(f"Fb表数据重新排列完成: 已移动 {moved_values_fb} 个值到B列")
+
+        # 比较Fb表AB两列相邻数据，确保B列数值小于A列
+        print(f"正在验证'Fb'工作表AB列数据关系...")
+        swap_count_fb = 0
+        max_row_fb = max(fb_sheet.max_row, split_index_fb)
+
+        for row in range(1, max_row_fb + 1):
+            a_value = fb_sheet.cell(row=row, column=1).value
+            b_value = fb_sheet.cell(row=row, column=2).value
+
+            # 尝试转换为数值
+            try:
+                a_value = float(a_value) if a_value is not None else None
+                b_value = float(b_value) if b_value is not None else None
+            except (ValueError, TypeError):
+                continue
+
+            # 确保两个单元格都有数值
+            if a_value is not None and b_value is not None:
+                # 如果B列值大于等于A列值，则交换
+                if b_value >= a_value:
+                    fb_sheet.cell(row=row, column=1).value = b_value
+                    fb_sheet.cell(row=row, column=2).value = a_value
+                    swap_count_fb += 1
+
+        print(f"Fb表数据验证完成: 执行了 {swap_count_fb} 次交换操作")
     else:
         print(f"没有找到符合条件的数据，'Fb'工作表保持为空")
 
