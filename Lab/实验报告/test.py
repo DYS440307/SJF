@@ -46,7 +46,7 @@ try:
     print(f"  目标值: {TARGET_VALUE}")
     print(f"  文件路径: {FILE_PATH}")
     print(f"  A列范围: {A_RANGE_LOW}~{A_RANGE_HIGH}")
-    print(f"  查找: {'B列最大值' if FIND_MAX else 'B列最小值'}")
+    print(f"  查找: {'最大值' if FIND_MAX else '最小值'}")
     start_time = time.time()
 
     # 读取Excel文件
@@ -176,57 +176,99 @@ try:
 
     print(f"数据验证完成: 执行了 {swap_count} 次交换操作")
 
-    # 在A列指定范围内查找B列的极值
-    print(f"正在分析A列和B列数据关系...")
+    # 处理Fb工作表 - 对所有偶数列执行相同操作
+    print(f"正在处理'Fb'工作表数据...")
 
-    # 获取A列和B列的数据
-    col_a = pd.to_numeric(df.iloc[:, 0], errors='coerce').dropna()
-    col_b = pd.to_numeric(df.iloc[:, 1], errors='coerce').dropna()
-
-    # 合并A列和B列数据
-    merged_df = pd.concat([col_a, col_b], axis=1).dropna()
-    merged_df.columns = ['A', 'B']
-
-    # 筛选A列在指定范围内的数据
-    filtered_df = merged_df[(merged_df['A'] >= A_RANGE_LOW) & (merged_df['A'] <= A_RANGE_HIGH)]
-
-    if not filtered_df.empty:
-        # 根据配置查找B列的最大值或最小值
-        if FIND_MAX:
-            extreme_row = filtered_df.loc[filtered_df['B'].idxmax()]
-            extreme_type = "最大值"
-        else:
-            extreme_row = filtered_df.loc[filtered_df['B'].idxmin()]
-            extreme_type = "最小值"
-
-        a_value = extreme_row['A']
-        b_value = extreme_row['B']
-
-        # 创建或获取Fb工作表
-        if "Fb" in wb.sheetnames:
-            fb_sheet = wb["Fb"]
-        else:
-            fb_sheet = wb.create_sheet("Fb")
-
-        # 清空Fb工作表中已有的数据
-        for row in range(1, fb_sheet.max_row + 1):
-            for col in range(1, fb_sheet.max_column + 1):
-                fb_sheet.cell(row=row, column=col).value = None
-
-        # 添加表头和结果
-        fb_sheet.cell(row=1, column=1).value = f"A列范围"
-        fb_sheet.cell(row=1, column=2).value = f"B列{extreme_type}"
-        fb_sheet.cell(row=1, column=3).value = f"对应A列值"
-
-        fb_sheet.cell(row=2, column=1).value = f"{A_RANGE_LOW}~{A_RANGE_HIGH}"
-        fb_sheet.cell(row=2, column=2).value = b_value
-        fb_sheet.cell(row=2, column=3).value = a_value
-
-        print(f"在A列范围 {A_RANGE_LOW}~{A_RANGE_HIGH} 内找到B列的{extreme_type}: {b_value}")
-        print(f"对应的A列值为: {a_value}")
-        print(f"结果已写入'Fb'工作表")
+    # 创建或获取Fb工作表
+    if "Fb" in wb.sheetnames:
+        fb_sheet = wb["Fb"]
     else:
-        print(f"在A列中未找到范围在 {A_RANGE_LOW}~{A_RANGE_HIGH} 之间的值")
+        fb_sheet = wb.create_sheet("Fb")
+
+    # 清空Fb工作表中已有的数据
+    for row in range(1, fb_sheet.max_row + 1):
+        for col in range(1, fb_sheet.max_column + 1):
+            fb_sheet.cell(row=row, column=col).value = None
+
+    # 处理所有偶数列（B,D,F...）
+    result_values = []
+
+    for col in range(1, max_col, 2):
+        # 获取列字母表示
+        col_letter = get_column_letter(col + 1)
+
+        # 获取当前偶数列和前一列(奇数列)的数据
+        odd_col = col - 1
+        even_col = col
+
+        # 检查列索引是否有效
+        if odd_col < 0 or even_col >= max_col:
+            print(f"    跳过无效列索引: {odd_col}和{even_col}")
+            continue
+
+        # 提取数据
+        current_df = df.iloc[:, [odd_col, even_col]].copy()
+
+        # 转换为数值类型并删除非数值
+        current_df.iloc[:, 0] = pd.to_numeric(current_df.iloc[:, 0], errors='coerce')
+        current_df.iloc[:, 1] = pd.to_numeric(current_df.iloc[:, 1], errors='coerce')
+        current_df = current_df.dropna()
+
+        # 跳过空列
+        if current_df.empty:
+            print(f"    跳过空列对: {get_column_letter(odd_col + 1)}&{col_letter}")
+            continue
+
+        # 筛选奇数列在指定范围内的数据
+        filtered_df = current_df[(current_df.iloc[:, 0] >= A_RANGE_LOW) & (current_df.iloc[:, 0] <= A_RANGE_HIGH)]
+
+        if not filtered_df.empty:
+            # 重置索引以确保索引连续
+            filtered_df = filtered_df.reset_index(drop=True)
+
+            # 确保筛选后的数据有足够的行
+            if len(filtered_df) == 0:
+                print(f"    跳过: {col_letter}列在范围内没有有效值")
+                continue
+
+            # 根据配置查找偶数列的最大值或最小值
+            if FIND_MAX:
+                extreme_value = filtered_df.iloc[:, 1].max()
+                extreme_type = "最大值"
+            else:
+                extreme_value = filtered_df.iloc[:, 1].min()
+                extreme_type = "最小值"
+
+            # 找到对应的行
+            extreme_rows = filtered_df[filtered_df.iloc[:, 1] == extreme_value]
+
+            # 如果有多个匹配值，取第一个
+            if not extreme_rows.empty:
+                extreme_row = extreme_rows.iloc[0]
+
+                # 获取奇数列和偶数列的值
+                odd_col_value = extreme_row.iloc[0]
+                even_col_value = extreme_row.iloc[1]
+
+                print(
+                    f"  在{get_column_letter(odd_col + 1)}列范围 {A_RANGE_LOW}~{A_RANGE_HIGH} 内找到{col_letter}列的{extreme_type}: {even_col_value}")
+                print(f"    对应的{get_column_letter(odd_col + 1)}列值为: {odd_col_value}")
+
+                # 保存结果
+                result_values.append(odd_col_value)
+            else:
+                print(f"    警告: 未找到符合条件的行")
+        else:
+            print(f"  在{get_column_letter(odd_col + 1)}列中未找到范围在 {A_RANGE_LOW}~{A_RANGE_HIGH} 之间的值")
+
+    # 将结果按顺序写入Fb工作表的第一列
+    if result_values:
+        for i, value in enumerate(result_values):
+            fb_sheet.cell(row=i + 1, column=1).value = value
+
+        print(f"已将所有结果按顺序写入'Fb'工作表的第一列")
+    else:
+        print(f"没有找到符合条件的数据，'Fb'工作表保持为空")
 
     # 保存修改
     print(f"正在保存修改后的Excel文件...")
