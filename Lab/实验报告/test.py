@@ -77,13 +77,47 @@ try:
         # 将值写入ACR表的对应行的第一列
         ws.cell(row=row_in_acr, column=1).value = nearest_value
 
+    # 读取ACR表中的所有数据
+    acr_data = []
+    max_row = ws.max_row
+    for row in range(1, max_row + 1):
+        cell_value = ws.cell(row=row, column=1).value
+        if cell_value is not None:
+            acr_data.append(cell_value)
+
+    # 计算分割点
+    split_index = len(acr_data) // 2
+
+    # 将后一半数据移至B列的起始行，并清空A列对应位置
+    for i in range(split_index, len(acr_data)):
+        source_row = i + 1
+        target_row = (i - split_index) + 1
+        ws.cell(row=target_row, column=2).value = acr_data[i]
+        ws.cell(row=source_row, column=1).value = None  # 清空A列原数据
+
+    # 比较AB两列相邻数据，确保B列数值大于A列
+    swap_count = 0
+    max_compare_row = max(ws.max_row, len(acr_data) - split_index)
+    for row in range(1, max_compare_row + 1):
+        a_value = ws.cell(row=row, column=1).value
+        b_value = ws.cell(row=row, column=2).value
+
+        # 确保两个单元格都有数值
+        if a_value is not None and b_value is not None:
+            # 如果B列值小于等于A列值，则交换
+            if b_value <= a_value:
+                ws.cell(row=row, column=1).value = b_value
+                ws.cell(row=row, column=2).value = a_value
+                swap_count += 1
+
     # 保存修改
     wb.save(FILE_PATH)
 
     end_time = time.time()
     execution_time = end_time - start_time
 
-    print(f"已成功处理所有列对数据并写入'ACR'表")
+    print(f"已成功处理所有列对数据，并将ACR表A列后一半数据移至B列起始行")
+    print(f"完成AB列数据比较，共执行 {swap_count} 次交换")
     print(f"程序运行时间: {execution_time:.4f} 秒")
 
 except Exception as e:
