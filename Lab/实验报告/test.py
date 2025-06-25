@@ -4,40 +4,57 @@ from openpyxl.utils import get_column_letter
 import time
 
 # 配置参数 - 可直接修改以下值
-TARGET_VALUE = 600
-FILE_PATH = r"E:\System\pic\A报告\IMP数据.xlsx"
+TARGET_VALUE = 600  # ACR表查找目标值
+FILE_PATH = r"E:\System\pic\A报告\IMP数据.xlsx"  # Excel文件路径
+A_RANGE_LOW = 200  # A列范围下限
+A_RANGE_HIGH = 400  # A列范围上限
+FIND_MAX = True  # True: 查找B列最大值, False: 查找B列最小值
 
 
 def find_nearest_value(df, target):
+    # 确保数据是数值类型
+    df = pd.to_numeric(df.iloc[:, 0], errors='coerce').dropna().reset_index(drop=True)
+
+    if df.empty:
+        return None
+
     left, right = 0, len(df) - 1
     nearest_idx = 0
     min_diff = float('inf')
 
     while left <= right:
         mid = (left + right) // 2
-        current_diff = abs(df.iloc[mid, 0] - target)
+        current_diff = abs(df.iloc[mid] - target)
 
         if current_diff < min_diff:
             min_diff = current_diff
             nearest_idx = mid
 
-        if df.iloc[mid, 0] < target:
+        if df.iloc[mid] < target:
             left = mid + 1
-        elif df.iloc[mid, 0] > target:
+        elif df.iloc[mid] > target:
             right = mid - 1
         else:
             break
 
-    return df.iloc[nearest_idx, 1]
+    return df.iloc[nearest_idx]
 
 
 try:
+    print(f"开始执行Excel数据处理脚本")
+    print(f"配置参数:")
+    print(f"  目标值: {TARGET_VALUE}")
+    print(f"  文件路径: {FILE_PATH}")
+    print(f"  A列范围: {A_RANGE_LOW}~{A_RANGE_HIGH}")
+    print(f"  查找: {'B列最大值' if FIND_MAX else 'B列最小值'}")
     start_time = time.time()
 
     # 读取Excel文件
+    print(f"正在读取Excel文件...")
     excel_file = pd.ExcelFile(FILE_PATH)
 
     # 获取IMP原档中的数据
+    print(f"正在解析'IMP原档'工作表...")
     df = excel_file.parse("IMP原档")
 
     # 检查IMP原档中有数值的列数是否为偶数
@@ -47,11 +64,16 @@ try:
         raise ValueError(f"IMP原档中有数值的列数为{non_empty_columns}，必须为偶数")
 
     # 使用openpyxl将值写入ACR表
+    print(f"准备写入'ACR'工作表...")
     wb = openpyxl.load_workbook(FILE_PATH)
     ws = wb["ACR"]
 
     # 处理所有奇数列(1,3,5...)及其后续偶数列(2,4,6...)
+    print(f"正在处理列对数据...")
     max_col = df.shape[1]
+    processed_pairs = 0
+    skipped_pairs = 0
+
     for col_pair in range(0, max_col, 2):
         # 检查是否有足够的列
         if col_pair + 1 >= max_col:
@@ -61,23 +83,50 @@ try:
         odd_col = col_pair
         even_col = col_pair + 1
 
+        # 获取列字母表示（用于日志输出）
+        col_letter_odd = get_column_letter(odd_col + 1)
+        col_letter_even = get_column_letter(even_col + 1)
+
+        print(f"  处理列对: {col_letter_odd}&{col_letter_even}")
+
         # 提取当前奇数列和偶数列的数据
-        current_df = df.iloc[:, [odd_col, even_col]].dropna()
+        current_df = df.iloc[:, [odd_col, even_col]].copy()
+
+        # 转换为数值类型并删除非数值
+        current_df.iloc[:, 0] = pd.to_numeric(current_df.iloc[:, 0], errors='coerce')
+        current_df.iloc[:, 1] = pd.to_numeric(current_df.iloc[:, 1], errors='coerce')
+        current_df = current_df.dropna()
 
         # 跳过空列对
         if current_df.empty:
+            print(f"    跳过空列对: {col_letter_odd}&{col_letter_even}")
+            skipped_pairs += 1
             continue
 
         # 找到奇数列最接近目标值的值对应的偶数列的值
         nearest_value = find_nearest_value(current_df, TARGET_VALUE)
 
+        # 如果找不到合适的值，则跳过
+        if nearest_value is None:
+            print(f"    在列 {col_letter_odd} 中未找到合适的值")
+            skipped_pairs += 1
+            continue
+
+        # 获取对应偶数列的值
+        nearest_row = current_df.iloc[(current_df.iloc[:, 0] - TARGET_VALUE).abs().argsort()[:1]]
+        value_to_write = nearest_row.iloc[0, 1]
+
         # 计算ACR表中的行号(从1开始，每对占一行)
         row_in_acr = (col_pair // 2) + 1
 
         # 将值写入ACR表的对应行的第一列
-        ws.cell(row=row_in_acr, column=1).value = nearest_value
+        ws.cell(row=row_in_acr, column=1).value = value_to_write
+        processed_pairs += 1
+
+    print(f"列对数据处理完成: 已处理 {processed_pairs} 对, 跳过 {skipped_pairs} 对")
 
     # 读取ACR表中的所有数据
+    print(f"正在分析'ACR'工作表数据...")
     acr_data = []
     max_row = ws.max_row
     for row in range(1, max_row + 1):
@@ -89,18 +138,33 @@ try:
     split_index = len(acr_data) // 2
 
     # 将后一半数据移至B列的起始行，并清空A列对应位置
+    print(f"正在重新排列'ACR'工作表数据...")
+    moved_values = 0
+
     for i in range(split_index, len(acr_data)):
         source_row = i + 1
         target_row = (i - split_index) + 1
         ws.cell(row=target_row, column=2).value = acr_data[i]
         ws.cell(row=source_row, column=1).value = None  # 清空A列原数据
+        moved_values += 1
+
+    print(f"数据重新排列完成: 已移动 {moved_values} 个值到B列")
 
     # 比较AB两列相邻数据，确保B列数值大于A列
+    print(f"正在验证'ACR'工作表AB列数据关系...")
     swap_count = 0
     max_compare_row = max(ws.max_row, len(acr_data) - split_index)
+
     for row in range(1, max_compare_row + 1):
         a_value = ws.cell(row=row, column=1).value
         b_value = ws.cell(row=row, column=2).value
+
+        # 尝试转换为数值
+        try:
+            a_value = float(a_value) if a_value is not None else None
+            b_value = float(b_value) if b_value is not None else None
+        except (ValueError, TypeError):
+            continue
 
         # 确保两个单元格都有数值
         if a_value is not None and b_value is not None:
@@ -110,15 +174,69 @@ try:
                 ws.cell(row=row, column=2).value = a_value
                 swap_count += 1
 
+    print(f"数据验证完成: 执行了 {swap_count} 次交换操作")
+
+    # 在A列指定范围内查找B列的极值
+    print(f"正在分析A列和B列数据关系...")
+
+    # 获取A列和B列的数据
+    col_a = pd.to_numeric(df.iloc[:, 0], errors='coerce').dropna()
+    col_b = pd.to_numeric(df.iloc[:, 1], errors='coerce').dropna()
+
+    # 合并A列和B列数据
+    merged_df = pd.concat([col_a, col_b], axis=1).dropna()
+    merged_df.columns = ['A', 'B']
+
+    # 筛选A列在指定范围内的数据
+    filtered_df = merged_df[(merged_df['A'] >= A_RANGE_LOW) & (merged_df['A'] <= A_RANGE_HIGH)]
+
+    if not filtered_df.empty:
+        # 根据配置查找B列的最大值或最小值
+        if FIND_MAX:
+            extreme_row = filtered_df.loc[filtered_df['B'].idxmax()]
+            extreme_type = "最大值"
+        else:
+            extreme_row = filtered_df.loc[filtered_df['B'].idxmin()]
+            extreme_type = "最小值"
+
+        a_value = extreme_row['A']
+        b_value = extreme_row['B']
+
+        # 创建或获取Fb工作表
+        if "Fb" in wb.sheetnames:
+            fb_sheet = wb["Fb"]
+        else:
+            fb_sheet = wb.create_sheet("Fb")
+
+        # 清空Fb工作表中已有的数据
+        for row in range(1, fb_sheet.max_row + 1):
+            for col in range(1, fb_sheet.max_column + 1):
+                fb_sheet.cell(row=row, column=col).value = None
+
+        # 添加表头和结果
+        fb_sheet.cell(row=1, column=1).value = f"A列范围"
+        fb_sheet.cell(row=1, column=2).value = f"B列{extreme_type}"
+        fb_sheet.cell(row=1, column=3).value = f"对应A列值"
+
+        fb_sheet.cell(row=2, column=1).value = f"{A_RANGE_LOW}~{A_RANGE_HIGH}"
+        fb_sheet.cell(row=2, column=2).value = b_value
+        fb_sheet.cell(row=2, column=3).value = a_value
+
+        print(f"在A列范围 {A_RANGE_LOW}~{A_RANGE_HIGH} 内找到B列的{extreme_type}: {b_value}")
+        print(f"对应的A列值为: {a_value}")
+        print(f"结果已写入'Fb'工作表")
+    else:
+        print(f"在A列中未找到范围在 {A_RANGE_LOW}~{A_RANGE_HIGH} 之间的值")
+
     # 保存修改
+    print(f"正在保存修改后的Excel文件...")
     wb.save(FILE_PATH)
 
     end_time = time.time()
     execution_time = end_time - start_time
 
-    print(f"已成功处理所有列对数据，并将ACR表A列后一半数据移至B列起始行")
-    print(f"完成AB列数据比较，共执行 {swap_count} 次交换")
+    print(f"所有操作已成功完成!")
     print(f"程序运行时间: {execution_time:.4f} 秒")
 
 except Exception as e:
-    print(f"发生错误: {e}")
+    print(f"执行过程中发生错误: {e}")
