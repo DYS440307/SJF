@@ -8,12 +8,12 @@ EXCEL_DIR = r"E:\System\pic\A报告"  # Excel文件所在目录
 SEARCH_TEXT = "SYS"  # 文件名中要包含的文本
 SOURCE_FILE = r"E:\System\pic\A报告\IMP数据.xlsx"  # 源数据文件路径
 
-# 数据映射：目标单元格 -> (源工作表, 源单元格)
-DATA_MAPPING = {
-    "B12": ("Fb", "A1"),  # 从Fb工作表的A1单元格获取数据
-    "D12": ("ACR", "A1"),  # 从ACR工作表的A1单元格获取数据
-    "F12": ("SPL", "A1"),  # 从SPL工作表的A1单元格获取数据
-    "H12": ("THD", "A1")  # 从THD工作表的A1单元格获取数据
+# 数据映射：源工作表 -> (起始单元格)
+SHEET_MAPPING = {
+    "Fb": "B12",  # 源文件的Fb工作表数据复制到目标文件第一个工作表的B12起始
+    "ACR": "D12",  # 源文件的ACR工作表数据复制到目标文件第一个工作表的D12起始
+    "SPL": "F12",  # 源文件的SPL工作表数据复制到目标文件第一个工作表的F12起始
+    "THD": "H12"  # 源文件的THD工作表数据复制到目标文件第一个工作表的H12起始
 }
 
 # 要写入的数据
@@ -61,45 +61,76 @@ def find_excel_files(directory, search_text):
     return excel_files
 
 
-def get_source_data():
-    """从源文件获取数据"""
-    try:
-        source_data = {}
-        wb = load_workbook(SOURCE_FILE, data_only=True)
+def copy_sheet_data(source_wb, source_sheet_name, target_wb, start_cell):
+    """将源工作表的全部数据复制到目标工作簿的第一个工作表的指定位置"""
+    # 检查源工作表是否存在
+    if source_sheet_name not in source_wb:
+        print(f"源文件中不存在工作表: {source_sheet_name}")
+        return
 
-        for target_cell, (sheet_name, source_cell) in DATA_MAPPING.items():
-            if sheet_name in wb:
-                ws = wb[sheet_name]
-                try:
-                    # 直接获取单元格值
-                    value = ws[source_cell].value
-                    source_data[target_cell] = value
-                    print(f"从源文件获取数据: {sheet_name}工作表的{source_cell}单元格 = {value}")
-                except Exception as e:
-                    print(f"获取{sheet_name}工作表的{source_cell}单元格数据时出错: {e}")
-            else:
-                print(f"源文件中不存在工作表: {sheet_name}")
+    # 获取目标工作簿的第一个工作表
+    target_ws = target_wb.active
 
-        return source_data
-    except Exception as e:
-        print(f"读取源文件时出错: {e}")
-        return {}
+    source_ws = source_wb[source_sheet_name]
+
+    # 解析起始单元格（例如：B12 -> 列索引=2, 行索引=12）
+    start_col_letter = start_cell[0]
+    start_row = int(start_cell[1:])
+
+    # 将列字母转换为数字索引（A=1, B=2, ...）
+    start_col = ord(start_col_letter) - 64  # ASCII值减去64
+
+    # 获取源工作表的最大行和列
+    max_row = source_ws.max_row
+    max_col = source_ws.max_column
+
+    print(f"从源文件复制工作表 '{source_sheet_name}' 数据到目标文件的第一个工作表，起始位置: {start_cell}")
+    print(f"源数据范围: 1-{max_row}行, A-{get_column_letter(max_col)}列")
+
+    # 复制数据
+    for row_idx in range(1, max_row + 1):
+        for col_idx in range(1, max_col + 1):
+            # 计算目标单元格位置
+            target_row = start_row + row_idx - 1
+            target_col = start_col + col_idx - 1
+
+            # 获取源单元格的值
+            source_cell = source_ws.cell(row=row_idx, column=col_idx)
+            value = source_cell.value
+
+            # 对数值类型的数据保留三位小数
+            if isinstance(value, (int, float)):
+                # 使用Python的格式化字符串保留三位小数
+                value = round(value, 3)
+                # 设置Excel单元格的数字格式为三位小数
+                target_ws.cell(row=target_row, column=target_col).number_format = '0.000'
+
+            # 获取目标单元格并设置值
+            target_ws.cell(row=target_row, column=target_col).value = value
+
+            # 可选：复制单元格样式
+            # if source_cell.has_style:
+            #     target_ws.cell(row=target_row, column=target_col).font = copy(source_cell.font)
+            #     target_ws.cell(row=target_row, column=target_col).border = copy(source_cell.border)
+            #     target_ws.cell(row=target_row, column=target_col).fill = copy(source_cell.fill)
+            #     target_ws.cell(row=target_row, column=target_col).alignment = copy(source_cell.alignment)
+
+    print(f"成功复制 {max_row} 行 {max_col} 列数据到起始位置 {start_cell}")
 
 
 def write_to_excel(file_path, cell_data):
     """向Excel文件的指定单元格写入数据，直接覆盖原文件"""
     try:
-        # 获取源文件中的数据
-        source_data = get_source_data()
+        # 加载源工作簿
+        source_wb = load_workbook(SOURCE_FILE, data_only=True)
 
-        # 加载工作簿
-        wb = load_workbook(file_path)
-        # 获取第一个工作表
-        ws = wb.active
+        # 加载目标工作簿
+        target_wb = load_workbook(file_path)
 
-        # 写入数据到指定单元格
+        # 写入固定数据
+        target_ws = target_wb.active
         for cell, value in cell_data.items():
-            ws[cell] = value
+            target_ws[cell] = value
 
             # 跳过B9单元格的解析
             if cell == "B9":
@@ -116,22 +147,22 @@ def write_to_excel(file_path, cell_data):
                     range_str = f"{min_val}"
                 else:
                     range_str = f"{min_val}~{max_val}"
-                ws[f"{next_col_letter}{row}"] = range_str
+                target_ws[f"{next_col_letter}{row}"] = range_str
 
                 # 在控制台打印解析的范围
                 print(f"单元格 {cell}: {value} -> 范围: {range_str}")
             else:
                 # 处理无法解析的数值类型
-                ws[f"{next_col_letter}{row}"] = "N/A"
+                target_ws[f"{next_col_letter}{row}"] = "N/A"
                 print(f"单元格 {cell}: {value} -> 范围: N/A (无法解析)")
 
-        # 写入从源文件获取的数据
-        for cell, value in source_data.items():
-            ws[cell] = value
-            print(f"从源文件复制数据到单元格 {cell}: {value}")
+        # 复制工作表数据
+        for source_sheet_name, start_cell in SHEET_MAPPING.items():
+            print(f"\n开始复制工作表 '{source_sheet_name}' 到 {start_cell}")
+            copy_sheet_data(source_wb, source_sheet_name, target_wb, start_cell)
 
         # 直接保存并覆盖原文件
-        wb.save(file_path)
+        target_wb.save(file_path)
         print(f"成功写入数据到 {file_path}")
     except Exception as e:
         print(f"处理文件 {file_path} 时出错: {e}")
