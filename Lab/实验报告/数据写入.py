@@ -7,6 +7,8 @@ from openpyxl.utils import get_column_letter
 EXCEL_DIR = r"E:\System\pic\A报告"  # Excel文件所在目录
 SEARCH_TEXT = "SYS"  # 文件名中要包含的文本
 SOURCE_FILE = r"E:\System\pic\A报告\IMP数据.xlsx"  # 源数据文件路径
+CONFIG_DIR = r"E:\System\pic\A报告\模板\配置文件"  # 配置文件目录
+LAB_RECORD_FILE = r"Z:\3-品质部\实验室\邓洋枢\2-实验记录汇总表\2025年\老化实验记录.xlsx"  # 老化实验记录文件
 
 # 数据映射：源工作表 -> (起始单元格)
 SHEET_MAPPING = {
@@ -16,14 +18,35 @@ SHEET_MAPPING = {
     "THD": "H12"  # 源文件的THD工作表数据复制到目标文件第一个工作表的H12起始
 }
 
-# 要写入的数据
-CELL_DATA = {
-    "B9": "Fc(Hz)",
-    "B10": "300±20%",
-    "D10": "6±15%",
-    "F10": "78±2",
-    "H10": "≤10"
-}
+
+def read_config(file_path):
+    """读取配置文件并返回配置字典"""
+    config = {}
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                # 跳过注释行和空行
+                if line.startswith('#') or not line:
+                    continue
+                # 解析配置项
+                key, value = line.split('=', 1)
+                config[key.strip()] = value.strip()
+        return config
+    except Exception as e:
+        print(f"读取配置文件时发生错误: {e}")
+        return None
+
+
+def parse_cell_data(config):
+    """从配置中解析CELL_DATA"""
+    cell_data = {}
+    for key, value in config.items():
+        if key.startswith('CELL_'):
+            # 提取单元格地址，例如将CELL_B9转换为B9
+            cell_address = key[5:]
+            cell_data[cell_address] = value
+    return cell_data
 
 
 def parse_value_range(value_str):
@@ -59,6 +82,102 @@ def find_excel_files(directory, search_text):
         if search_text in filename and filename.endswith(('.xlsx', '.xls')):
             excel_files.append(os.path.join(directory, filename))
     return excel_files
+
+
+def find_config_file(report_id):
+    """在老化实验记录中查找报告编号并返回对应的配置文件路径"""
+    try:
+        # 读取老化实验记录文件
+        print(f"正在读取老化实验记录文件: {LAB_RECORD_FILE}")
+        df = pd.read_excel(LAB_RECORD_FILE)
+
+        # 假设报告编号在第N列，这里遍历所有列查找
+        found = False
+        report_col = None
+
+        # 从最后一行开始向上查找
+        for col in df.columns:
+            for row_idx in reversed(df.index):
+                cell_value = df.at[row_idx, col]
+                if pd.notna(cell_value) and str(report_id) in str(cell_value):
+                    report_col = col
+                    found = True
+                    break
+            if found:
+                break
+
+        if not found:
+            raise ValueError(f"在老化实验记录中未找到报告编号: {report_id}")
+
+        print(f"找到报告编号 '{report_id}' 在列: {report_col}")
+
+        # 获取对应的第I列单元格内容
+        i_col_idx = 8  # 假设I列是第9列(索引为8)，根据实际情况调整
+        if i_col_idx >= len(df.columns):
+            raise ValueError(f"未找到第I列数据")
+
+        cell_value = df.at[row_idx, df.columns[i_col_idx]]
+        if pd.isna(cell_value):
+            raise ValueError(f"第I列对应单元格内容为空")
+
+        # 分割单元格内容并移除TCL
+        parts = [part.strip() for part in str(cell_value).split(';') if part.strip() != 'TCL']
+
+        if not parts:
+            raise ValueError(f"第I列单元格内容分割后没有有效关键字")
+
+        print(f"从第I列获取的有效关键字: {parts}")
+
+        # 在配置文件目录中查找匹配的配置文件
+        config_files = os.listdir(CONFIG_DIR)
+        matched_files = []
+
+        # 为每个关键字查找匹配的配置文件
+        for part in parts:
+            part_matched = False
+            # 尝试匹配包含所有关键字的单个配置文件
+            combined_keywords = part
+            for file in config_files:
+                if all(keyword.strip() in file for keyword in combined_keywords.split('；')) and file.endswith('.txt'):
+                    matched_files.append(os.path.join(CONFIG_DIR, file))
+                    part_matched = True
+                    print(f"  找到匹配的配置文件: {file}，匹配关键字: {combined_keywords}")
+                    break  # 找到一个匹配项后就退出循环
+
+            # 如果没有找到组合匹配，则尝试单独匹配每个关键字
+            if not part_matched:
+                for keyword in combined_keywords.split('；'):
+                    keyword = keyword.strip()
+                    if not keyword:
+                        continue
+                    for file in config_files:
+                        if keyword in file and file.endswith('.txt'):
+                            matched_files.append(os.path.join(CONFIG_DIR, file))
+                            part_matched = True
+                            print(f"  找到匹配的配置文件: {file}，匹配关键字: {keyword}")
+                            break  # 找到一个匹配项后就退出循环
+                    if part_matched:
+                        break  # 找到一个关键字匹配后就不再检查其他关键字
+
+            if not part_matched:
+                print(f"  警告: 未找到与关键字 '{part}' 匹配的配置文件")
+
+        # 移除重复的文件路径
+        matched_files = list(dict.fromkeys(matched_files))
+
+        if not matched_files:
+            raise ValueError(f"未找到匹配的配置文件，关键字: {parts}")
+
+        print(f"找到 {len(matched_files)} 个匹配的配置文件")
+        for file in matched_files:
+            print(f"  - {file}")
+
+        # 返回第一个匹配的配置文件
+        return matched_files[0]
+
+    except Exception as e:
+        print(f"查找配置文件时发生错误: {e}")
+        return None
 
 
 def copy_sheet_data(source_wb, source_sheet_name, target_wb, start_cell):
@@ -107,13 +226,6 @@ def copy_sheet_data(source_wb, source_sheet_name, target_wb, start_cell):
 
             # 获取目标单元格并设置值
             target_ws.cell(row=target_row, column=target_col).value = value
-
-            # 可选：复制单元格样式
-            # if source_cell.has_style:
-            #     target_ws.cell(row=target_row, column=target_col).font = copy(source_cell.font)
-            #     target_ws.cell(row=target_row, column=target_col).border = copy(source_cell.border)
-            #     target_ws.cell(row=target_row, column=target_col).fill = copy(source_cell.fill)
-            #     target_ws.cell(row=target_row, column=target_col).alignment = copy(source_cell.alignment)
 
     print(f"成功复制 {max_row} 行 {max_col} 列数据到起始位置 {start_cell}")
 
@@ -169,6 +281,38 @@ def write_to_excel(file_path, cell_data):
 
 
 def main():
+    # 获取用户输入的报告编号
+    report_id = input("请输入报告编号: ").strip()
+    if not report_id:
+        print("报告编号不能为空")
+        return
+
+    print(f"正在查找报告编号 '{report_id}' 对应的配置文件...")
+
+    # 查找配置文件
+    config_file_path = find_config_file(report_id)
+    if not config_file_path:
+        print("无法找到匹配的配置文件")
+        return
+
+    print(f"使用配置文件: {config_file_path}")
+
+    # 读取配置文件
+    config = read_config(config_file_path)
+    if not config:
+        print("无法读取配置文件或配置文件为空")
+        return
+
+    # 解析CELL_DATA
+    cell_data = parse_cell_data(config)
+    if not cell_data:
+        print("配置文件中未找到CELL_DATA配置")
+        return
+
+    print(f"从配置文件加载了 {len(cell_data)} 个单元格配置")
+    for cell, value in cell_data.items():
+        print(f"  {cell}: {value}")
+
     # 查找符合条件的Excel文件
     excel_files = find_excel_files(EXCEL_DIR, SEARCH_TEXT)
 
@@ -181,7 +325,7 @@ def main():
     # 处理每个Excel文件
     for file in excel_files:
         print(f"\n处理文件: {file}")
-        write_to_excel(file, CELL_DATA)
+        write_to_excel(file, cell_data)
 
 
 if __name__ == "__main__":
