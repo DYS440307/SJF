@@ -49,6 +49,16 @@ def parse_m_column(m_value):
     return parts[:6]
 
 
+def parse_q_column(q_value):
+    """解析Q列数据（格式：扬声器寿命测试系统-精深PS5018S（A组）；恒温恒湿箱-）"""
+    if pd.isna(q_value):
+        return [None, None]
+
+    parts = str(q_value).split('；')
+    parts += [None] * (2 - len(parts))  # 确保返回2个元素
+    return parts[:2]
+
+
 def calculate_time_difference(ws):
     """计算F4单元格的值（D4时间减去B4日期并转换为小时，只保留整数部分）"""
     try:
@@ -147,6 +157,18 @@ def write_to_report_template(report_data, template_file):
             if value is not None:
                 ws[cell] = value
                 print(f"已将M列数据 '{value}' 写入到单元格 {cell}")
+
+        # 新增：解析并写入Q列数据
+        q_parts = parse_q_column(report_data.iloc[16])  # Q列索引为16
+        q_mapping = {
+            'B5': q_parts[0],  # 扬声器寿命测试系统-精深PS5018S（A组）
+            'F5': q_parts[1]   # 恒温恒湿箱-
+        }
+
+        for cell, value in q_mapping.items():
+            if value is not None:
+                ws[cell] = value
+                print(f"已将Q列数据 '{value}' 写入到单元格 {cell}")
 
         # 计算并写入时间差
         calculate_time_difference(ws)
