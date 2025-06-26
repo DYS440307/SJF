@@ -2,7 +2,6 @@ import os
 import pandas as pd
 from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
-from openpyxl.styles import Font
 
 # 配置参数 - 方便修改
 EXCEL_DIR = r"E:\System\pic\A报告"  # Excel文件所在目录
@@ -18,17 +17,6 @@ SHEET_MAPPING = {
     "SPL": "F12",  # 源文件的SPL工作表数据复制到目标文件第一个工作表的F12起始
     "THD": "H12"  # 源文件的THD工作表数据复制到目标文件第一个工作表的H12起始
 }
-
-# 定义各列范围检查的基准单元格
-COLUMN_RANGE_MAPPING = {
-    'B': 'B10',  # B列和C列的数据检查B10的范围
-    'D': 'D10',  # D列和E列的数据检查D10的范围
-    'F': 'F10',  # F列和G列的数据检查F10的范围
-    'H': 'H10'  # H列和I列的数据检查H10的范围
-}
-
-# 定义红色加粗字体样式
-ERROR_FONT = Font(color="FF0000", bold=True)
 
 
 def read_config(file_path):
@@ -85,26 +73,6 @@ def parse_value_range(value_str):
     except Exception as e:
         print(f"解析值范围失败: {value_str}, 错误: {e}")
         return None, None
-
-
-def validate_cell_value(cell_value, range_cell, cell_data):
-    """验证单元格值是否在指定范围单元格定义的范围内"""
-    # 如果单元格值不是数值类型，直接返回False
-    if not isinstance(cell_value, (int, float)):
-        return False
-
-    # 获取范围单元格的值
-    range_value_str = cell_data.get(range_cell)
-    if not range_value_str:
-        return False
-
-    # 解析范围
-    min_val, max_val = parse_value_range(range_value_str)
-    if min_val is None or max_val is None:
-        return False
-
-    # 检查值是否在范围内
-    return min_val <= cell_value <= max_val
 
 
 def find_excel_files(directory, search_text):
@@ -212,24 +180,6 @@ def find_config_file(report_id):
         return None
 
 
-def ensure_enough_rows(target_ws, source_ws, start_row):
-    """确保目标工作表有足够的行来容纳源工作表的数据"""
-    source_max_row = source_ws.max_row
-    target_max_row = target_ws.max_row
-
-    # 计算需要的行数
-    required_rows = start_row + source_max_row - 1
-
-    # 如果目标工作表的行数不足，则插入新行
-    if target_max_row < required_rows:
-        rows_to_insert = required_rows - target_max_row
-        print(f"目标工作表需要增加 {rows_to_insert} 行以容纳源数据")
-        target_ws.insert_rows(target_max_row + 1, amount=rows_to_insert)
-        print(f"已成功增加 {rows_to_insert} 行")
-    else:
-        print(f"目标工作表已有足够的行 ({target_max_row} >= {required_rows})")
-
-
 def copy_sheet_data(source_wb, source_sheet_name, target_wb, start_cell):
     """将源工作表的全部数据复制到目标工作簿的第一个工作表的指定位置"""
     # 检查源工作表是否存在
@@ -239,14 +189,12 @@ def copy_sheet_data(source_wb, source_sheet_name, target_wb, start_cell):
 
     # 获取目标工作簿的第一个工作表
     target_ws = target_wb.active
+
     source_ws = source_wb[source_sheet_name]
 
     # 解析起始单元格（例如：B12 -> 列索引=2, 行索引=12）
     start_col_letter = start_cell[0]
     start_row = int(start_cell[1:])
-
-    # 确保目标工作表有足够的行
-    ensure_enough_rows(target_ws, source_ws, start_row)
 
     # 将列字母转换为数字索引（A=1, B=2, ...）
     start_col = ord(start_col_letter) - 64  # ASCII值减去64
@@ -324,45 +272,6 @@ def write_to_excel(file_path, cell_data):
         for source_sheet_name, start_cell in SHEET_MAPPING.items():
             print(f"\n开始复制工作表 '{source_sheet_name}' 到 {start_cell}")
             copy_sheet_data(source_wb, source_sheet_name, target_wb, start_cell)
-
-        # 验证并格式化数据
-        print("\n开始验证数据范围并设置格式...")
-        for col_base_letter in COLUMN_RANGE_MAPPING.keys():
-            range_cell = COLUMN_RANGE_MAPPING[col_base_letter]
-            print(
-                f"验证 {col_base_letter} 和 {get_column_letter(ord(col_base_letter) + 1)} 列的数据，参考范围: {range_cell}")
-
-            # 获取当前列的范围值
-            range_value = cell_data.get(range_cell)
-            if not range_value:
-                print(f"警告: 未找到参考范围单元格 {range_cell} 的值")
-                continue
-
-            # 获取起始行和结束行（假设数据从第12行开始）
-            start_row = 12
-            end_row = target_ws.max_row
-
-            # 验证当前列和下一列的数据
-            for row in range(start_row, end_row + 1):
-                # 验证当前列
-                current_col_letter = col_base_letter
-                cell = f"{current_col_letter}{row}"
-                cell_value = target_ws[cell].value
-
-                if isinstance(cell_value, (int, float)):
-                    if not validate_cell_value(cell_value, range_cell, cell_data):
-                        target_ws[cell].font = ERROR_FONT
-                        print(f"警告: 单元格 {cell} 的值 {cell_value} 不在 {range_cell} 的范围内: {range_value}")
-
-                # 验证下一列
-                next_col_letter = get_column_letter(ord(current_col_letter) + 1)
-                cell = f"{next_col_letter}{row}"
-                cell_value = target_ws[cell].value
-
-                if isinstance(cell_value, (int, float)):
-                    if not validate_cell_value(cell_value, range_cell, cell_data):
-                        target_ws[cell].font = ERROR_FONT
-                        print(f"警告: 单元格 {cell} 的值 {cell_value} 不在 {range_cell} 的范围内: {range_value}")
 
         # 直接保存并覆盖原文件
         target_wb.save(file_path)
