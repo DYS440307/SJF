@@ -820,7 +820,7 @@ try:
 
             print(f"THD表数据重新排列完成: 已移动 {moved_values_thd} 个值到B列")
 
-            # 比较THD表AB两列相邻数据，确保B列数值小于A列
+            # 比较THD表AB两列相邻数据，确保B列数值大于A列
             print(f"正在验证'THD'工作表AB列数据关系...")
             swap_count_thd = 0
             max_compare_row_thd = max(thd_sheet.max_row, split_index_thd)
@@ -838,8 +838,8 @@ try:
 
                 # 确保两个单元格都有数值
                 if a_value is not None and b_value is not None:
-                    # 如果B列值大于等于A列值，则交换
-                    if b_value >= a_value:
+                    # 如果B列值小于等于A列值，则交换
+                    if b_value <= a_value:
                         thd_sheet.cell(row=row, column=1).value = b_value
                         thd_sheet.cell(row=row, column=2).value = a_value
                         swap_count_thd += 1
