@@ -212,6 +212,24 @@ def find_config_file(report_id):
         return None
 
 
+def ensure_enough_rows(target_ws, source_ws, start_row):
+    """确保目标工作表有足够的行来容纳源工作表的数据"""
+    source_max_row = source_ws.max_row
+    target_max_row = target_ws.max_row
+
+    # 计算需要的行数
+    required_rows = start_row + source_max_row - 1
+
+    # 如果目标工作表的行数不足，则插入新行
+    if target_max_row < required_rows:
+        rows_to_insert = required_rows - target_max_row
+        print(f"目标工作表需要增加 {rows_to_insert} 行以容纳源数据")
+        target_ws.insert_rows(target_max_row + 1, amount=rows_to_insert)
+        print(f"已成功增加 {rows_to_insert} 行")
+    else:
+        print(f"目标工作表已有足够的行 ({target_max_row} >= {required_rows})")
+
+
 def copy_sheet_data(source_wb, source_sheet_name, target_wb, start_cell):
     """将源工作表的全部数据复制到目标工作簿的第一个工作表的指定位置"""
     # 检查源工作表是否存在
@@ -221,12 +239,14 @@ def copy_sheet_data(source_wb, source_sheet_name, target_wb, start_cell):
 
     # 获取目标工作簿的第一个工作表
     target_ws = target_wb.active
-
     source_ws = source_wb[source_sheet_name]
 
     # 解析起始单元格（例如：B12 -> 列索引=2, 行索引=12）
     start_col_letter = start_cell[0]
     start_row = int(start_cell[1:])
+
+    # 确保目标工作表有足够的行
+    ensure_enough_rows(target_ws, source_ws, start_row)
 
     # 将列字母转换为数字索引（A=1, B=2, ...）
     start_col = ord(start_col_letter) - 64  # ASCII值减去64
