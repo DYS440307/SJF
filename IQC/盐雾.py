@@ -12,7 +12,7 @@ file2 = r"E:\System\desktop\盐雾实验记录.xlsx"
 sheet_name = "4月"
 
 # 关键词列表
-keywords = ['T铁', 'U铁', '盆架', '钕铁硼', '华司']
+keywords = ['T铁', 'U铁', '盆架', '钕铁硼', '华司', '上壳']
 
 # 加载工作簿与指定工作表
 wb1 = load_workbook(filename=file1, data_only=True)
