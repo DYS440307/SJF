@@ -3,7 +3,7 @@ import os
 
 
 def count_supplier_data(month_sheet, supplier_name):
-    """统计指定月份工作表中供应商的总数量和不合格数量"""
+    """统计指定月份工作表中供应商的总数量和不合格数量，支持NG模糊匹配"""
     total_count = 0
     ng_count = 0
 
@@ -19,7 +19,9 @@ def count_supplier_data(month_sheet, supplier_name):
         # 如果是目标供应商，进行统计
         if current_supplier == supplier_name:
             total_count += 1
-            if result == "NG":
+
+            # 模糊匹配NG：将结果转为字符串，不区分大小写检查是否包含"ng"
+            if result and "ng" in str(result).lower():
                 ng_count += 1
 
         row += 1
