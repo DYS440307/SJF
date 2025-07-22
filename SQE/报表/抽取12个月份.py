@@ -1,6 +1,6 @@
 import openpyxl
 import os
-
+#抽取12个月份到不良履历
 
 def count_supplier_data(month_sheet, supplier_name):
     """统计指定月份工作表中供应商的总数量和不合格数量，支持供应商名称和NG的模糊匹配"""
