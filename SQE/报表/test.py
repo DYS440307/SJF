@@ -49,25 +49,42 @@ def update_supplier_stats():
             print("错误：B3单元格中未找到供应商名称")
             return
 
-        print(f"正在统计供应商 '{supplier_name}' 的质量数据...")
+        print(f"正在统计供应商 '{supplier_name}' 的全年质量数据...")
 
-        # 处理1月份数据
-        january_sheet = workbook["1月"]
-        jan_total, jan_ng = count_supplier_data(january_sheet, supplier_name)
-        trend_sheet["D3"].value = jan_total  # 1月总数量写入D3
-        trend_sheet["D4"].value = jan_ng  # 1月不合格数量写入D4
-        print(f"1月统计完成：总数量={jan_total}, 不合格数量={jan_ng}")
+        # 定义月份对应的工作表名称和目标单元格列
+        # 格式：(月份名称, 总数单元格列, 不良数单元格列)
+        months_config = [
+            ("1月", "D", "D"),
+            ("2月", "E", "E"),
+            ("3月", "F", "F"),
+            ("4月", "G", "G"),
+            ("5月", "H", "H"),
+            ("6月", "I", "I"),
+            ("7月", "J", "J"),
+            ("8月", "K", "K"),
+            ("9月", "L", "L"),
+            ("10月", "M", "M"),
+            ("11月", "N", "N"),
+            ("12月", "O", "O")
+        ]
 
-        # 处理2月份数据
-        february_sheet = workbook["2月"]
-        feb_total, feb_ng = count_supplier_data(february_sheet, supplier_name)
-        trend_sheet["E3"].value = feb_total  # 2月总数量写入E3
-        trend_sheet["E4"].value = feb_ng  # 2月不合格数量写入E4
-        print(f"2月统计完成：总数量={feb_total}, 不合格数量={feb_ng}")
+        # 循环处理每个月的数据
+        for month_name, total_col, ng_col in months_config:
+            # 获取当月工作表
+            month_sheet = workbook[month_name]
+
+            # 统计数据
+            total, ng = count_supplier_data(month_sheet, supplier_name)
+
+            # 写入结果（总数写在第3行，不良数写在第4行）
+            trend_sheet[f"{total_col}3"].value = total
+            trend_sheet[f"{ng_col}4"].value = ng
+
+            print(f"{month_name}统计完成：总数量={total}, 不合格数量={ng}")
 
         # 保存修改
         workbook.save(excel_path)
-        print("所有结果已成功写入Excel文件")
+        print("全年数据已成功写入Excel文件")
 
     except Exception as e:
         print(f"处理过程中发生错误：{str(e)}")
