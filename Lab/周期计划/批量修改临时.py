@@ -17,7 +17,7 @@ def modify_excel_files(root_dir):
     template_configs = [
         {
             "keyword": "常温连续负荷模板",
-            "b5": "多路扬声器寿命测试系统-精深PS5018S"
+            "b5": "扬声器寿命测试系统-精深PS5018S"
         },
         {
             "keyword": "低温存储模板",
@@ -25,7 +25,7 @@ def modify_excel_files(root_dir):
         },
         {
             "keyword": "低温额定功率模板",
-            "b5": "多路扬声器寿命测试系统-精深1000A",
+            "b5": "扬声器寿命测试系统-精深1000A",
             "d5": "恒温恒湿箱-NTH-225C"
         },
         {
@@ -34,7 +34,7 @@ def modify_excel_files(root_dir):
         },
         {
             "keyword": "高温高湿额定功率模板",
-            "b5": "多路扬声器寿命测试系统-精深1000A",
+            "b5": "扬声器寿命测试系统-精深1000A",
             "d5": "恒温恒湿箱-HE-WS-576C9",
             "formula_cell": "B4",  # 已修正为B4单元格
             "formula": "=G2+8"
