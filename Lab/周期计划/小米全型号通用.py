@@ -283,9 +283,21 @@ def process_excel_file(file_path, output_dir, order_date, order_number, material
         workbook = openpyxl.load_workbook(file_path, data_only=False)
         sheet = workbook.active
 
-        # 写入订单信息
-        sheet['G2'] = order_date
+        # 写入订单信息 - G2单元格（日期）
+        # 先将字符串日期转换为datetime对象
+        date_parts = list(map(int, order_date.split('/')))
+        date_obj = datetime(date_parts[0], date_parts[1], date_parts[2])
+        sheet['G2'] = date_obj
+        # 设置G2单元格格式为"6月1日"样式
+        sheet['G2'].number_format = 'm月d日'
+
+        # 写入订单编号 - L2单元格
         sheet['L2'] = order_number
+
+        # 设置B4单元格格式为"6月1日"样式（假设B4也需要显示日期）
+        # 如果B4需要显示与G2相同的日期
+        sheet['B4'] = date_obj
+        sheet['B4'].number_format = 'm月d日'
 
         # 用于存储已生成的值，确保不重复
         existing_values = set()
@@ -804,4 +816,4 @@ def get_unique_material_codes():
 
 
 if __name__ == "__main__":
-    main()    
+    main()
