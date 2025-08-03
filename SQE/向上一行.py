@@ -3,10 +3,10 @@ import os
 from tqdm import tqdm
 
 
-def insert_blank_rows_and_shift_a_only(file_path, process_all_sheets=False):
+def process_excel_file(file_path, process_all_sheets=False):
     """
-    在A列有数值的单元格上方插入空白行，并仅将A列该单元格内容上移到新行
-    其他列内容保持不变
+    1. 在A列有数值的单元格上方插入空白行，并仅将A列该单元格内容上移到新行
+    2. 对A列每个有值单元格，将其到下方第一个有值A列单元格之间的空白行的F列，填充为该单元格的值
 
     参数:
     file_path: Excel文件路径
@@ -28,13 +28,12 @@ def insert_blank_rows_and_shift_a_only(file_path, process_all_sheets=False):
             ws = wb[sheet_name]
             print(f"正在处理工作表: {sheet_name}")
 
-            # 获取最大行数并创建进度条
+            # 第一步：在A列有值的单元格上方插入空白行并上移A列内容
+            print("执行第一步：插入空白行并上移A列内容...")
             max_row = ws.max_row
             with tqdm(total=max_row, desc="处理进度") as pbar:
-                # 从下往上遍历，避免插入行后影响索引
                 row = max_row
                 while row >= 1:
-                    # 只检查A列(第1列)
                     a_cell = ws.cell(row=row, column=1)
                     a_value = a_cell.value
 
@@ -48,6 +47,36 @@ def insert_blank_rows_and_shift_a_only(file_path, process_all_sheets=False):
                         a_cell.value = None
 
                     row -= 1
+                    pbar.update(1)
+
+            # 第二步：处理F列填充逻辑（对所有A列有值单元格）
+            print("\n执行第二步：填充F列空白行...")
+            # 收集A列所有有值单元格的行号和对应值
+            target_rows = []
+            new_max_row = ws.max_row  # 由于插入了行，最大行数已变化
+            for row in range(1, new_max_row + 1):
+                a_value = ws.cell(row=row, column=1).value
+                if a_value is not None and str(a_value).strip() != "":
+                    target_rows.append((row, a_value))  # 存储(行号, 值)元组
+
+            # 对每个有值的A列单元格，处理其下方到下一个有值A列之间的F列
+            with tqdm(total=len(target_rows), desc="F列填充进度") as pbar:
+                for row_start, value in target_rows:
+                    # 找到下方第一个有值的A列单元格行号
+                    row_end = None
+                    for row in range(row_start + 1, new_max_row + 1):
+                        a_value = ws.cell(row=row, column=1).value
+                        if a_value is not None and str(a_value).strip() != "":
+                            row_end = row
+                            break
+                    # 如果没有找到下一个有值的行，就处理到最后一行
+                    if row_end is None:
+                        row_end = new_max_row + 1  # 确保range能包含最后一行
+
+                    # 填充F列（第6列）为当前A列单元格的值
+                    for row in range(row_start + 1, row_end):
+                        ws.cell(row=row, column=6).value = value
+
                     pbar.update(1)
 
         # 保存修改后的文件，避免覆盖原文件
@@ -70,8 +99,8 @@ if __name__ == "__main__":
     # 文件路径 - 请根据实际情况修改
     file_path = r"E:\System\download\物料清单_2025080208224874_236281.xlsx"
 
-    # 调用函数，修正了函数名
-    insert_blank_rows_and_shift_a_only(  # 这里修正了函数名称
+    # 调用函数
+    process_excel_file(
         file_path=file_path,
         process_all_sheets=False  # 只处理活动工作表
     )
