@@ -2,8 +2,8 @@ import os
 import shutil
 
 # 定义源目录和目标目录
-source_dir = r"Z:\公共文件夹\新建文件夹 (2)\DYS\01 项目承认发放资料"
-target_dir = r"Z:\公共文件夹\新建文件夹 (2)\DYS\提取"  # 目标目录与源目录相同
+source_dir = r"Z:\公共文件夹\新建文件夹 (2)\DYS"
+target_dir = r"Z:\公共文件夹\新建文件夹 (2)\07.受控图纸"  # 目标目录与源目录相同
 
 # 遍历源目录下的所有子文件夹和文件
 for root, dirs, files in os.walk(source_dir):
