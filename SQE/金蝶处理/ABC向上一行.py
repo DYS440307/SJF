@@ -5,7 +5,7 @@ from tqdm import tqdm
 
 def process_excel_file(file_path, process_all_sheets=False):
     """
-    1. 在A列有数值的单元格上方插入空白行，并仅将A列该单元格内容上移到新行
+    1. 在A列有数值的单元格上方插入空白行，并将A、B、C列该单元格内容上移到新行
     2. 对A列每个有值单元格，将其到下方第一个有值A列单元格之间的空白行的F列，填充为该单元格的值
 
     参数:
@@ -28,8 +28,8 @@ def process_excel_file(file_path, process_all_sheets=False):
             ws = wb[sheet_name]
             print(f"正在处理工作表: {sheet_name}")
 
-            # 第一步：在A列有值的单元格上方插入空白行并上移A列内容
-            print("执行第一步：插入空白行并上移A列内容...")
+            # 第一步：在A列有值的单元格上方插入空白行并上移A、B、C列内容
+            print("执行第一步：插入空白行并上移A、B、C列内容...")
             max_row = ws.max_row
             with tqdm(total=max_row, desc="处理进度") as pbar:
                 row = max_row
@@ -41,10 +41,20 @@ def process_excel_file(file_path, process_all_sheets=False):
                         # 在当前行上方插入空白行
                         ws.insert_rows(row)
 
-                        # 仅将A列内容上移到新插入的行
-                        ws.cell(row=row, column=1).value = a_value
-                        # 清空原A列单元格内容
+                        # 将A、B、C列内容上移到新插入的行
+                        # A列（第1列）
+                        ws.cell(row=row, column=1).value = a_cell.value
                         a_cell.value = None
+
+                        # B列（第2列）
+                        b_cell = ws.cell(row=row + 1, column=2)
+                        ws.cell(row=row, column=2).value = b_cell.value
+                        b_cell.value = None
+
+                        # C列（第3列）
+                        c_cell = ws.cell(row=row + 1, column=3)
+                        ws.cell(row=row, column=3).value = c_cell.value
+                        c_cell.value = None
 
                     row -= 1
                     pbar.update(1)
