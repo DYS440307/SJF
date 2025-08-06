@@ -2,6 +2,9 @@ import openpyxl
 import os
 from tqdm import tqdm
 
+# 文件路径 - 已更新为需要处理的文件
+FILE_PATH = r"E:\System\download\物料组装BOM(原档) - 副本.xlsx"
+
 
 def process_excel_file(file_path, process_all_sheets=False):
     """
@@ -106,11 +109,8 @@ def process_excel_file(file_path, process_all_sheets=False):
 
 
 if __name__ == "__main__":
-    # 文件路径 - 请根据实际情况修改
-    file_path = r"E:\System\download\物料清单 - 副本_去重后.xlsx"
-
     # 调用函数
     process_excel_file(
-        file_path=file_path,
+        file_path=FILE_PATH,
         process_all_sheets=False  # 只处理活动工作表
     )
