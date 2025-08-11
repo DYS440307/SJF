@@ -30,6 +30,6 @@ def copy_cells_down(file_path, column='A'):
 
 if __name__ == "__main__":
     # 你的Excel文件路径
-    excel_path = r"E:\System\download\123.xlsx"
+    excel_path = r"E:\System\download\采购入库单列表(原档) 副本.xlsx"
     # 处理A列
     copy_cells_down(excel_path, 'A')
