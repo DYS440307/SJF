@@ -13,6 +13,11 @@ def process_excel(file_path):
             if col not in df.columns:
                 raise ValueError(f"Excel文件中缺少必要的列: {col}")
 
+        # 将物料编码1列转换为字符串类型，避免数据类型不兼容问题
+        df['物料编码1'] = df['物料编码1'].astype(str)
+        # 处理可能的NaN转换为字符串'nan'的问题
+        df['物料编码1'] = df['物料编码1'].replace('nan', '')
+
         # 创建供应商名称2到物料编码2的映射（一个供应商可能对应多个编码）
         supplier2_mapping = {}
         for _, row in df.iterrows():
@@ -22,6 +27,7 @@ def process_excel(file_path):
             if pd.notna(supplier) and pd.notna(code):
                 if supplier not in supplier2_mapping:
                     supplier2_mapping[supplier] = set()
+                # 确保编码以字符串形式存储
                 supplier2_mapping[supplier].add(str(code))
 
         # 处理物料编码1列，合并匹配的物料编码2
@@ -30,7 +36,7 @@ def process_excel(file_path):
 
             if pd.notna(supplier1) and supplier1 in supplier2_mapping:
                 # 获取当前物料编码1的值
-                current_codes = str(row['物料编码1']) if pd.notna(row['物料编码1']) else ""
+                current_codes = row['物料编码1']
 
                 # 拆分当前编码为集合（去重）
                 current_codes_set = set(current_codes.split(';')) if current_codes else set()
