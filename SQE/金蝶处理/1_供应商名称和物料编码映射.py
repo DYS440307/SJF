@@ -63,7 +63,7 @@ def process_excel(file_path):
 
 if __name__ == "__main__":
     # 输入文件路径
-    excel_path = r"E:\System\download\1.xlsx"
+    excel_path = r"E:\System\download\采购入库单列表(原档) 副本_复制.xlsx"
 
     # 检查文件是否存在
     if not os.path.exists(excel_path):
