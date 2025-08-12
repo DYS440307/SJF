@@ -3,7 +3,7 @@ import os
 from tqdm import tqdm
 
 # 文件路径 - 已更新为需要处理的文件
-FILE_PATH = r"E:\System\download\物料组装BOM(原档) - 副本.xlsx"
+FILE_PATH = r"E:\System\download\物料清单（原档） - 副本.xlsx"
 
 
 def process_excel_file(file_path, process_all_sheets=False):
