@@ -82,14 +82,26 @@ def analyze_all_suppliers(data_file_path, score_file_path, target_month=8):
                         e_cell.value = score
                         print(f"已在'{target_sheet_name}'工作表第{row}行写入供应商'{supplier}'的得分：{score}")
 
-                        # 当E列是数值时，在F列填充35，G列填充20，H列填充25
+                        # 当E列是数值时，设置F、G、H列的值
                         f_cell = ws.cell(row=row, column=6)  # F列是第6列
                         g_cell = ws.cell(row=row, column=7)  # G列是第7列
                         h_cell = ws.cell(row=row, column=8)  # H列是第8列
                         f_cell.value = 35
                         g_cell.value = 20
                         h_cell.value = 0
-                        print(f"已在'{target_sheet_name}'工作表第{row}行F列填充35，G列填充20，H列填充25")
+                        print(f"已在'{target_sheet_name}'工作表第{row}行F列填充35，G列填充20，H列填充0")
+
+                        # 设置I、J、K列的计算公式
+                        i_cell = ws.cell(row=row, column=9)  # I列是第9列
+                        j_cell = ws.cell(row=row, column=10)  # J列是第10列
+                        k_cell = ws.cell(row=row, column=11)  # K列是第11列
+
+                        # 公式中使用当前行号（注意Excel行号从1开始）
+                        i_cell.value = f"=100-(E{row}+F{row}+G{row})+H{row}"
+                        j_cell.value = f"=100-I{row}"
+                        k_cell.value = f'=IF(J{row}<=100,IF(J{row}>=95,"A",IF(J{row}>=80,"B",IF(J{row}>=70,"C",IF(J{row}<70,"D")))),"错误")'
+
+                        print(f"已在'{target_sheet_name}'工作表第{row}行设置I、J、K列计算公式")
 
                         matched = True
                         break  # 找到匹配的供应商后停止检查其他供应商
