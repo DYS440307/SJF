@@ -1,69 +1,87 @@
 import pandas as pd
-import openpyxl
+import os
+from openpyxl import load_workbook
+from openpyxl.utils import get_column_letter, column_index_from_string
 
 
-def transfer_supplier_data():
+def process_excel_files():
     # 文件路径
-    quality_trend_path = r"E:\System\desktop\PY\SQE\2025年.xlsx"
-    qcds_path = r"E:\System\desktop\PY\SQE\声乐QCDS综合评分表 (2).xlsx"
+    file1_path = r"E:\System\desktop\PY\SQE\声乐QCDS综合评分表 (2).xlsx"
+    file2_path = r"E:\System\desktop\PY\SQE\2025年.xlsx"
 
-    # 工作簿名称
-    quality_sheet_name = "供应商质量表现趋势"
-    july_sheet_name = "7月"
+    # 检查文件是否存在
+    if not os.path.exists(file1_path):
+        print(f"错误：文件1不存在 - {file1_path}")
+        return
+    if not os.path.exists(file2_path):
+        print(f"错误：文件2不存在 - {file2_path}")
+        return
 
     try:
-        # 读取供应商质量表现趋势数据
-        # 使用openpyxl引擎读取，以便后续能准确获取单元格数据
-        quality_wb = openpyxl.load_workbook(quality_trend_path, data_only=True)
-        quality_sheet = quality_wb[quality_sheet_name]
+        # 加载工作簿以便直接使用单元格引用
+        wb1 = load_workbook(file1_path)
+        wb2 = load_workbook(file2_path)
+        ws1 = wb1.active
+        ws2 = wb2.active
 
-        # 读取7月工作簿数据
-        qcds_wb = openpyxl.load_workbook(qcds_path)
-        qcds_sheet = qcds_wb[july_sheet_name]
+        # 获取文件2中B3的供应商名称（B列，第3行）
+        supplier_name = ws2['B3'].value
+        print(f"要匹配的供应商名称: {supplier_name}")
 
-        # 获取"7月工作簿"中E4单元格对应的供应商名称
-        # 注意：openpyxl的单元格索引是从1开始的
-        supplier_name = qcds_sheet['E4'].value
-        print(f"找到供应商: {supplier_name}")
+        if not supplier_name:
+            print("错误：文件2的B3单元格为空")
+            return
 
-        # 在"供应商质量表现趋势"工作簿的B列中查找匹配的供应商名称
-        # 假设供应商名称在B列，从第2行开始有数据
-        found = False
-        for row in range(2, quality_sheet.max_row + 1):
-            current_supplier = quality_sheet[f'B{row}'].value
-            if current_supplier == supplier_name:
-                print(f"在第{row}行找到匹配的供应商")
+        # 在文件1的C列中查找包含该供应商名称的行
+        matched_row = None
+        row_index = 1  # 从第1行开始查找
 
-                # 获取J161单元格的值并计算 (这里可能需要根据实际情况调整行号)
-                # 注意：用户提到的J161可能是特定数据所在位置，可能需要确认
-                j_value = quality_sheet['J161'].value
-                if j_value is not None:
-                    calculated_value = j_value * 45
-                    print(f"计算结果: {j_value} * 45 = {calculated_value}")
-
-                    # 将计算结果填入"7月工作簿"的E4单元格
-                    qcds_sheet['E4'].value = calculated_value
-                    found = True
-                else:
-                    print("J161单元格的值为空，无法计算")
+        # 循环查找C列中的内容
+        while True:
+            cell_value = ws1[f"C{row_index}"].value
+            # 如果单元格为空且下一行也为空，则停止查找
+            if not cell_value and not ws1[f"C{row_index + 1}"].value:
                 break
 
-        if not found:
-            print(f"未找到供应商: {supplier_name}")
+            # 检查是否包含供应商名称
+            if cell_value and supplier_name in str(cell_value):
+                matched_row = row_index
+                print(f"匹配成功：文件1的第{matched_row}行（C{matched_row}）包含 '{supplier_name}'")
+                break
 
-        # 保存修改
-        qcds_wb.save(qcds_path)
-        print("数据已成功更新并保存")
+            row_index += 1
+
+        if matched_row is None:
+            print(f"未找到匹配项：文件1的C列中没有包含 '{supplier_name}' 的内容")
+            wb1.close()
+            wb2.close()
+            return
+
+        # 获取文件2中J6的值
+        j6_value = ws2['J6'].value
+
+        if j6_value is None:
+            print("警告：文件2的J6单元格为空")
+            j6_value = 0
+
+        # 计算结果
+        result = float(j6_value) * 40
+
+        # 写入文件1中匹配行的E列
+        target_cell = f"E{matched_row}"
+        ws1[target_cell] = result
+
+        # 保存文件1的修改
+        wb1.save(file1_path)
+        print(f"已将文件2的J6单元格值({j6_value})乘以40后的结果({result})写入文件1的{target_cell}单元格")
+
+        # 关闭工作簿
+        wb1.close()
+        wb2.close()
 
     except Exception as e:
-        print(f"发生错误: {str(e)}")
-    finally:
-        # 确保工作簿被关闭
-        if 'quality_wb' in locals():
-            quality_wb.close()
-        if 'qcds_wb' in locals():
-            qcds_wb.close()
+        print(f"处理过程中发生错误：{str(e)}")
 
 
 if __name__ == "__main__":
-    transfer_supplier_data()
+    process_excel_files()
