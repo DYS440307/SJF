@@ -1,159 +1,205 @@
-import pandas as pd
-import os
-import time
+import openpyxl
+from openpyxl.utils import get_column_letter
+import logging
+import re
+
+# ==================== 月份选择配置（可自由修改）====================
+# 在这里指定需要处理的月份，支持数字（如7）或中文（如"7月"、"七月"）
+TARGET_MONTH = "1月"  # 可修改为其他月份，如"8"、"九月"等
+# ==================================================================
+
+# 配置日志
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
 
 
-def process_supplier_data():
-    # 文件路径
-    file1_path = r"E:\System\desktop\PY\SQE\2025年.xlsx"
-    file2_path = r"E:\System\desktop\PY\SQE\声乐QCDS综合评分表 - 副本.xlsx"
+def normalize_text(text):
+    """标准化文本：仅去除空白字符，保留原始字符和大小写"""
+    if text is None:
+        return ""
+    # 转换为字符串并去除所有空白字符（空格、制表符等）
+    return re.sub(r'\s+', '', str(text))
 
-    # 检查文件是否存在
-    for path in [file1_path, file2_path]:
-        if not os.path.exists(path):
-            print(f"错误：文件不存在 - {path}")
-            return
 
+def process_suppliers(file1_path, file2_path, target_month):
     try:
-        # 读取文件1数据（无表头）
-        df1 = pd.read_excel(file1_path, header=None)
-        print(f"调试信息：文件1总行数为 {len(df1)}")  # 新增调试信息
+        wb1 = openpyxl.load_workbook(file1_path, data_only=True)
+        wb2 = openpyxl.load_workbook(file2_path)
+        ws1 = wb1.active
+        ws2 = wb2.active
+        logger.info(f"成功加载文件：{file1_path} 和 {file2_path}")
+        logger.info(f"当前处理的目标月份：{target_month}")
 
-        # 获取月份行(第2行，索引1)，找到7月对应的列索引
-        # 先检查月份行是否存在
-        if len(df1) < 2:
-            print("错误：文件1数据不足，无法找到月份行")
-            return
+        # 定位目标月份所在列（第2行）
+        target_col = None
+        target_month_str = str(target_month).strip()
+        # 统一月份判断标准（支持数字、"7月"、"七月"等格式）
+        month_variants = {
+            target_month_str,
+            f"{target_month_str}月",
+            str(int(target_month_str) if target_month_str.isdigit() else "")
+        }
 
-        month_row = df1.iloc[1]  # 第2行是月份行
-        july_col_index = None
-        for idx, value in month_row.items():
-            if str(value).strip() in ['7', '7月', '七月']:
-                july_col_index = idx
-                break
+        for col in range(1, ws1.max_column + 1):
+            val = ws1.cell(row=2, column=col).value
+            if val is not None:
+                val_str = str(val).strip()
+                # 检查单元格值是否匹配目标月份的任何一种形式
+                if val_str in month_variants or normalize_text(val_str) in month_variants:
+                    target_col = col
+                    logger.info(f"找到{target_month}所在列：{get_column_letter(target_col)}")
+                    break
 
-        if july_col_index is None:
-            print("错误：在文件1中未找到7月的数据列")
-            return
+        if target_col is None:
+            logger.error(f"未在文件1的第2行找到{target_month}所在列")
+            return False
 
-        # 读取文件1中的供应商名称和对应的7月合格率
-        supplier_data = {}
-        row_count = len(df1)
-        start_row = 2  # B3对应的索引（Excel行号3 → 索引2）
+        # 预处理文件2：缓存供应商全称（标准化后和原始）与行号
+        supplier_full_list = []
+        for r2 in range(2, ws2.max_row + 1):
+            full_name = ws2.cell(row=r2, column=3).value  # C列是全称
+            if full_name:
+                # 保存原始名称和标准化名称（去除空白）
+                normalized_full = normalize_text(full_name)
+                supplier_full_list.append((str(full_name), normalized_full, r2))
+        logger.info(f"文件2共加载 {len(supplier_full_list)} 个供应商全称")
 
-        # 检查起始行是否存在
-        if start_row >= row_count:
-            print("错误：文件1数据不足，无法找到供应商起始行")
-            return
+        # 遍历文件1的供应商
+        row = 3  # 供应商简称从第3行（B3）开始
+        processed_count = 0
+        matched_count = 0
 
-        # 遍历所有供应商（每5行一个供应商）
-        for i in range(start_row, row_count, 5):
-            # 供应商名称在B列（索引1）
-            # 检查当前行是否存在
-            if i >= row_count:
-                print(f"警告：供应商行索引 {i} 超出范围，停止处理")
-                break
-
-            supplier_short = str(df1.iloc[i, 1]).strip()
-            if not supplier_short or supplier_short == 'nan':
+        while row <= ws1.max_row:
+            # 获取供应商名称（B列）
+            supplier_short = ws1.cell(row=row, column=2).value
+            if not supplier_short:
+                row += 4
                 continue
 
-            # 合格率行在名称行下方第3行（索引i+3）
-            pass_rate_row = i + 3
-            # 增加严格的边界检查
-            if pass_rate_row >= row_count:
-                print(
-                    f"警告：供应商 {supplier_short} 的合格率行索引 {pass_rate_row} 超出范围（总行数：{row_count}），跳过处理")
+            # 处理供应商简称
+            supplier_short_str = str(supplier_short).strip()
+            supplier_short_normalized = normalize_text(supplier_short_str)
+
+            # 过滤标题行
+            if supplier_short_str in ("", "供应商", "供应商简称"):
+                row += 4
                 continue
 
-            # 检查7月列是否存在
-            if july_col_index >= len(df1.columns):
-                print(f"警告：7月列索引 {july_col_index} 超出文件1的列范围，停止处理")
-                break
+            processed_count += 1
+            logger.debug(f"处理供应商：'{supplier_short_str}'（标准化：'{supplier_short_normalized}'，行号：{row}）")
 
-            # 获取7月合格率
-            pass_rate_cell = df1.iloc[pass_rate_row, july_col_index]
+            # 获取目标月份合格率（简称行+3行）
+            pass_rate_row = row + 3
+            if pass_rate_row > ws1.max_row:
+                logger.warning(f"供应商 '{supplier_short_str}' 的合格率行超出范围，跳过")
+                row += 4
+                continue
 
-            try:
-                # 处理百分比格式
-                pass_rate_str = str(pass_rate_cell).strip().replace('%', '')
-                pass_rate = float(pass_rate_str)
+            pass_rate_cell = ws1.cell(row=pass_rate_row, column=target_col)
+            pass_rate = pass_rate_cell.value
 
-                # 转换为小数形式
-                if pass_rate > 1:
-                    pass_rate = pass_rate / 100
+            # 处理特殊情况
+            if isinstance(pass_rate, str):
+                if "本月未来料" in pass_rate:
+                    logger.info(f"{supplier_short_str}：本月未来料，跳过")
+                    row += 4
+                    continue
+                # 尝试转换带%的字符串
+                try:
+                    pass_rate = float(pass_rate.replace("%", "")) / 100
+                except ValueError:
+                    logger.warning(f"{supplier_short_str}：合格率非数字（{pass_rate}），跳过")
+                    row += 4
+                    continue
+            elif not isinstance(pass_rate, (int, float)):
+                logger.warning(f"{supplier_short_str}：合格率格式无效（{pass_rate}），跳过")
+                row += 4
+                continue
 
-                supplier_data[supplier_short] = pass_rate
-                print(f"已读取供应商：{supplier_short}，7月合格率：{pass_rate * 100:.2f}%，计算值：{pass_rate * 45:.2f}")
-            except ValueError:
-                print(f"警告：供应商 {supplier_short} 的7月合格率不是有效数字，原始值：{pass_rate_cell}")
-            except Exception as e:
-                print(f"处理供应商 {supplier_short} 时发生错误：{str(e)}")
+            value_to_write = round(pass_rate * 45, 2)
 
-        if not supplier_data:
-            print("警告：未从文件1中读取到任何供应商数据")
-            return
+            # 匹配逻辑：先尝试标准化文本匹配，再尝试原始文本匹配
+            matched = False
+            # 1. 先使用去除空白后的文本进行匹配（解决空格导致的匹配失败）
+            for full_name, normalized_full, r2 in supplier_full_list:
+                if supplier_short_normalized in normalized_full:
+                    logger.info(
+                        f"匹配成功（标准化）：'{supplier_short_str}' 被包含在 '{full_name}' 中（行{r2}），写入值：{value_to_write}")
+                    # 写入E列
+                    target_cell = ws2.cell(row=r2, column=5)
+                    # 处理合并单元格
+                    merged_target = None
+                    for merged_range in ws2.merged_cells.ranges:
+                        if target_cell.coordinate in merged_range:
+                            merged_target = ws2[merged_range.start_cell.coordinate]
+                            break
+                    if merged_target:
+                        merged_target.value = value_to_write
+                    else:
+                        target_cell.value = value_to_write
+                    matched = True
+                    matched_count += 1
+                    break  # 找到第一个匹配后退出
 
-        # 读取文件2数据
-        df2 = pd.read_excel(file2_path)
+            # 2. 如果标准化匹配失败，尝试原始文本匹配
+            if not matched:
+                for full_name, _, r2 in supplier_full_list:
+                    if supplier_short_str in full_name:
+                        logger.info(
+                            f"匹配成功（原始）：'{supplier_short_str}' 被包含在 '{full_name}' 中（行{r2}），写入值：{value_to_write}")
+                        # 写入E列
+                        target_cell = ws2.cell(row=r2, column=5)
+                        # 处理合并单元格
+                        merged_target = None
+                        for merged_range in ws2.merged_cells.ranges:
+                            if target_cell.coordinate in merged_range:
+                                merged_target = ws2[merged_range.start_cell.coordinate]
+                                break
+                        if merged_target:
+                            merged_target.value = value_to_write
+                        else:
+                            target_cell.value = value_to_write
+                        matched = True
+                        matched_count += 1
+                        break
 
-        # 确保D列存在，不存在则创建
-        if 3 >= len(df2.columns):
-            df2.insert(3, '计算结果', None)
-            print("警告：文件2中未找到D列，已自动创建")
+            if not matched:
+                logger.warning(f"未匹配到供应商：'{supplier_short_str}'（标准化：'{supplier_short_normalized}'）")
+                # 输出可能的相似项，帮助调试
+                similar_items = []
+                for full_name, normalized_full, r2 in supplier_full_list:
+                    if supplier_short_normalized in normalized_full or supplier_short_str in full_name:
+                        similar_items.append(f"[{r2}] {full_name}")
+                if similar_items:
+                    logger.warning(f"  可能的相似项：{', '.join(similar_items)}")
 
-        # 批量处理写入逻辑
-        def match_supplier(full_name):
-            full_name_str = str(full_name).strip()
-            if not full_name_str or full_name_str == 'nan':
-                return None
+            row += 4  # 处理下一个供应商
 
-            for short_name, pass_rate in supplier_data.items():
-                if short_name in full_name_str:
-                    # 计算：合格率 * 45
-                    return round(pass_rate * 45, 2)
+        # 保存文件2
+        wb2.save(file2_path)
+        logger.info(f"\n处理总结：共处理 {processed_count} 个供应商，成功匹配 {matched_count} 个")
+        return True
 
-            return None
-
-        # 应用匹配函数，将计算结果写入D列
-        df2.iloc[:, 3] = df2.iloc[:, 2].apply(match_supplier)
-
-        # 统计结果
-        total = len(df2)
-        updated = df2.iloc[:, 3].notna().sum()
-        no_matches = total - updated
-
-        # 输出匹配报告
-        print("\n" + "=" * 50)
-        print(f"匹配报告:")
-        print(f"总记录数: {total}")
-        print(f"成功匹配并更新: {updated}")
-        print(f"未找到匹配: {no_matches}")
-        print("=" * 50 + "\n")
-
-        # 打印未匹配的供应商名称
-        if no_matches > 0:
-            print("未匹配的供应商名称:")
-            for idx, name in enumerate(df2.iloc[:, 2]):
-                if pd.isna(df2.iloc[idx, 3]):
-                    print(f"- {name}")
-
-        # 尝试关闭文件（防止文件被锁定）
-        time.sleep(2)
-
-        # 直接覆盖写入原文件
-        try:
-            df2.to_excel(file2_path, index=False)
-            print(f"\n处理完成，已直接更新原文件：{file2_path}")
-            print(f"成功更新 {updated} 条记录，均为 7月合格率×45 的计算结果")
-        except PermissionError:
-            print(f"错误：没有权限写入文件 {file2_path}，请关闭可能打开的文件后重试")
-        except Exception as e:
-            print(f"保存文件时发生错误：{str(e)}")
-
+    except FileNotFoundError as e:
+        logger.error(f"文件不存在：{e.filename}")
+    except PermissionError:
+        logger.error(f"没有权限操作文件，请关闭Excel后重试")
     except Exception as e:
-        print(f"处理过程中发生错误：{str(e)}")
+        logger.error(f"处理过程中出错：{str(e)}", exc_info=True)
+    finally:
+        try:
+            wb1.close()
+            wb2.close()
+        except:
+            pass
+    return False
 
 
 if __name__ == "__main__":
-    process_supplier_data()
+    file1 = r"E:\System\desktop\PY\SQE\2025年.xlsx"
+    file2 = r"E:\System\desktop\PY\SQE\声乐QCDS综合评分表 - 副本.xlsx"
+    # 调用时传入目标月份
+    process_suppliers(file1, file2, TARGET_MONTH)
