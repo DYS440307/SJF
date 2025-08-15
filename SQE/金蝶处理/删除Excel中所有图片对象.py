@@ -60,7 +60,7 @@ def process_directory(root_dir):
 
 
 if __name__ == "__main__":
-    target_directory = r"E:\System\download\8月份"
+    target_directory = r"E:\System\download\2025年\8月份"
     print(f"开始处理目录: {target_directory}")
     process_directory(target_directory)
     print("处理完成")
