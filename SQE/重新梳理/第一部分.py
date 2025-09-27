@@ -6,41 +6,42 @@ import unicodedata
 # --------------------------
 # 配置参数（在此处修改关键词和规则）
 # --------------------------
-# 1. 要在A列中匹配并删除的关键词（可修改）
+# 1. 要在A列中匹配并删除的关键词（包含匹配）
 DELETE_A_KEYWORDS = ["劳保"]  # 支持多个关键词，如 ["劳保", "报废"]
 
-# 2. 要在B列中匹配并删除的关键词（新增，可修改）
-DELETE_B_KEYWORDS = ["鼓纸胶",
-                     "RA溶剂",
-                     "去渍水",
-                     "双组份中心胶",
-                     "双组份内磁磁路胶",
-                     "天那水",
-                     "干燥剂",
-                     "弹波胶",
-                     "模组",
-                     "八字胶",
-                     "出线孔胶",
-                     "双组份外磁磁路胶",
-                     "无源音箱",
-                     "无铅焊锡丝",
-                     "全音扬声器",
-                     "粘异物胶",
-                     "防尘帽胶",
-                     "磁液",
-                     "酒精",
-                     "锦丝线固定胶",
-                     "保鲜膜",
-                     "低音扬声器",
-                     "塑料袋",
-                     "调音纸",
-                     "贴纸",
-                     "纸垫圈",
-                     "保护膜",
-                     "套管",
-                     "PP垫圈",
-                     "高音扬声器"
-                     ]  # 可添加更多，如 ["鼓纸胶", "RA溶剂", "其他词"]
+# 2. 要在B列中匹配并删除的关键词（包含匹配）
+DELETE_B_KEYWORDS = [
+    "鼓纸胶",
+    "RA溶剂",
+    "去渍水",
+    "双组份中心胶",
+    "双组份内磁磁路胶",
+    "天那水",
+    "干燥剂",
+    "弹波胶",
+    "模组",
+    "八字胶",
+    "出线孔胶",
+    "双组份外磁磁路胶",
+    "无源音箱",
+    "无铅焊锡丝",
+    "全音扬声器",
+    "粘异物胶",
+    "防尘帽胶",
+    "磁液",
+    "酒精",
+    "锦丝线固定胶",
+    "保鲜膜",
+    "低音扬声器",
+    "塑料袋",
+    "调音纸",
+    "贴纸",
+    "纸垫圈",
+    "保护膜",
+    "套管",
+    "PP垫圈",
+    "高音扬声器"
+]  # 可添加更多关键词
 
 # 3. 替换规则（全字段匹配，仅当内容与关键词完全一致时替换）
 REPLACEMENT_RULES = [
@@ -63,21 +64,25 @@ REPLACEMENT_RULES = [
     ("外箱", "纸箱"),
     ("鼓纸组件", "鼓纸"),
     ("海绵", "减震棉"),
-    ("内盒","纸箱"),
-    ("PCB","端子板"),
-    ("盖板","纸箱"),
-    ("音膜组件","音膜"),
-    ("音膜支架组件","音膜"),
-    ("盆架组件","盆架"),
-    ("散件成品（橡胶圈）","橡胶圈"),
-    ("底板","纸箱"),
-    ("刀卡","纸箱"),
-    ("低音面罩","面罩"),
+    ("内盒", "纸箱"),
+    ("PCB", "端子板"),
+    ("盖板", "纸箱"),
+    ("音膜组件", "音膜"),
+    ("音膜支架组件", "音膜"),
+    ("盆架组件", "盆架"),
+    ("散件成品（橡胶圈）", "橡胶圈"),
+    ("底板", "纸箱"),
+    ("刀卡", "纸箱"),
+    ("低音面罩", "面罩"),
     ("EVA", "减震棉"),
 ]
 
 # 4. 其他配置
 MAX_REPLACE_ROUNDS = 2  # 多次替换的最大轮数
+# 特殊处理的公司名称
+SPECIAL_COMPANY = "池州赛唯特电子科技有限公司"
+# 该公司对应的保留B列值
+SPECIAL_COMPANY_ALLOWED_B = "箱壳"
 
 
 def clean_text(text):
@@ -127,7 +132,7 @@ def delete_rows_by_keyword(sheet, column, keywords):
 
 
 def process_excel_columns(file_path):
-    """完整处理流程：替换（全字段匹配）→填充→删除→去重→分类"""
+    """完整处理流程：替换（全字段匹配）→填充→删除→特殊处理→去重→分类"""
     try:
         if not os.path.exists(file_path):
             print(f"错误: 文件 '{file_path}' 不存在")
@@ -169,7 +174,7 @@ def process_excel_columns(file_path):
                 for _ in range(MAX_REPLACE_ROUNDS):
                     changed = False
                     for key, value in cleaned_rules:
-                        # 核心修改：从包含匹配改为全字段匹配
+                        # 全字段匹配
                         if cleaned_value == key:
                             cleaned_value = value  # 替换为目标值
                             replaced_count += 1
@@ -213,15 +218,49 @@ def process_excel_columns(file_path):
         # --------------------------
         # 步骤4：删除B列包含指定关键词的行
         # --------------------------
-        print(f"===== 步骤4：删除B列包含{DELETE_B_KEYWORDS}的行 =====")
+        print(f"===== 步骤4：删除B列包含{DELETE_B_KEYWORDS[:5]}等关键词的行 =====")  # 只显示前5个关键词
         deleted_b = delete_rows_by_keyword(sheet, "B", DELETE_B_KEYWORDS)
         print(f"B列删除完成：共删除 {deleted_b} 行\n")
         max_row = sheet.max_row
 
         # --------------------------
-        # 步骤5：A/B列组合去重
+        # 新增步骤5：处理特定公司的行
+        # 条件：A列为SPECIAL_COMPANY且B列不是SPECIAL_COMPANY_ALLOWED_B的行删除
         # --------------------------
-        print("===== 步骤5：A/B列组合去重 =====")
+        print(f"===== 步骤5：处理特定公司'{SPECIAL_COMPANY}'的行 =====")
+        rows_to_delete = []
+        special_company_clean = clean_text(SPECIAL_COMPANY)
+        allowed_b_clean = clean_text(SPECIAL_COMPANY_ALLOWED_B)
+
+        for row in range(1, max_row + 1):
+            a_val = sheet[f'A{row}'].value
+            b_val = sheet[f'B{row}'].value
+
+            a_clean = clean_text(a_val)
+            b_clean = clean_text(b_val)
+
+            # 检查A列是否为特定公司
+            if a_clean == special_company_clean:
+                # 检查B列是否为允许的值
+                if b_clean != allowed_b_clean:
+                    rows_to_delete.append(row)
+
+        # 执行删除
+        rows_to_delete.sort(reverse=True)
+        deleted_special = 0
+        for row in rows_to_delete:
+            if row <= sheet.max_row:
+                sheet.delete_rows(row)
+                deleted_special += 1
+
+        print(
+            f"特定公司行处理完成：共删除 {deleted_special} 行（A列为'{SPECIAL_COMPANY}'且B列不为'{SPECIAL_COMPANY_ALLOWED_B}'）\n")
+        max_row = sheet.max_row
+
+        # --------------------------
+        # 步骤6：A/B列组合去重
+        # --------------------------
+        print("===== 步骤6：A/B列组合去重 =====")
         seen_pairs = set()
         duplicate_rows = []
 
@@ -265,9 +304,9 @@ def process_excel_columns(file_path):
         max_row = sheet.max_row
 
         # --------------------------
-        # 步骤6：按B列分类
+        # 步骤7：按B列分类
         # --------------------------
-        print("===== 步骤6：按B列分类 =====")
+        print("===== 步骤7：按B列分类 =====")
         rows_data = []
 
         for row in range(1, max_row + 1):
@@ -301,8 +340,9 @@ def process_excel_columns(file_path):
         print("\n正在保存文件...")
         workbook.save(file_path)
         print(f"所有处理完成，已覆盖原文件: {file_path}")
-        print(
-            f"最终统计：删除A列{deleted_a}行，删除B列{deleted_b}行，删除重复{deleted_duplicate}行，剩余{len(rows_data)}行")
+        print(f"最终统计：删除A列{deleted_a}行，删除B列{deleted_b}行，"
+              f"删除特定公司行{deleted_special}行，删除重复{deleted_duplicate}行，"
+              f"剩余{len(rows_data)}行")
 
     except Exception as e:
         print(f"\n处理错误: {str(e)}")
