@@ -5,7 +5,7 @@ import re
 
 def process_excel_columns(file_path):
     """
-    优化去重速度，通过批量删除连续重复行提升处理效率
+    优化去重速度，处理完成后直接覆盖原文件
     """
     try:
         if not os.path.exists(file_path):
@@ -87,7 +87,7 @@ def process_excel_columns(file_path):
         print("A列填充完成")
 
         # --------------------------
-        # 3. 高效去重逻辑（核心优化）
+        # 3. 高效去重逻辑
         # --------------------------
         print("\n开始处理A/B列组合去重...")
         seen_pairs = set()
@@ -114,33 +114,32 @@ def process_excel_columns(file_path):
 
         print(f"去重检查完成，发现 {len(duplicate_rows)} 行重复数据")
 
-        # 核心优化：批量删除连续的重复行
+        # 批量删除连续的重复行
         if duplicate_rows:
             print("开始批量删除重复行...")
-            # 按行号降序排序（确保删除后面的行不影响前面的行号）
+            # 按行号降序排序
             duplicate_rows.sort(reverse=True)
 
-            # 将连续的行合并为批次（例如：[5,4,3,1] → [(3,3), (1,1)]）
+            # 将连续的行合并为批次
             batches = []
             current_start = duplicate_rows[0]
             current_length = 1
 
             for row in duplicate_rows[1:]:
-                if row == current_start - 1:  # 连续行（降序排列，下一行应为当前行-1）
+                if row == current_start - 1:
                     current_length += 1
                     current_start = row
                 else:
                     batches.append((current_start, current_length))
                     current_start = row
                     current_length = 1
-            batches.append((current_start, current_length))  # 添加最后一个批次
+            batches.append((current_start, current_length))
 
             # 批量删除每个批次
             deleted_total = 0
             for i, (start_row, length) in enumerate(batches):
                 sheet.delete_rows(start_row, length)
                 deleted_total += length
-                # 每处理10个批次显示一次进度
                 if (i + 1) % 10 == 0:
                     print(f"已删除 {deleted_total}/{len(duplicate_rows)} 行重复数据...")
 
@@ -185,13 +184,11 @@ def process_excel_columns(file_path):
                 print(f"已写入 {new_row} 行数据...")
 
         # --------------------------
-        # 保存文件
+        # 保存文件（直接覆盖原文件）
         # --------------------------
-        dir_name, file_name = os.path.split(file_path)
-        base_name, ext = os.path.splitext(file_name)
-        new_file_path = os.path.join(dir_name, f"{base_name}_处理完成{ext}")
-        workbook.save(new_file_path)
-        print(f"\n所有处理完成，文件保存至: {new_file_path}")
+        print("\n正在保存文件（直接覆盖原文件）...")
+        workbook.save(file_path)
+        print(f"所有处理完成，已覆盖原文件: {file_path}")
 
     except Exception as e:
         print(f"\n处理错误: {str(e)}")
