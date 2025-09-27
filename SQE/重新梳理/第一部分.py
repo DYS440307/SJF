@@ -86,6 +86,26 @@ SPECIAL_COMPANIES = [
     }
 ]
 
+# 新增：B列自定义排序顺序（按此列表顺序排列）
+B_COLUMN_SORT_ORDER = [
+    "防尘帽",
+    "音圈",
+    "鼓纸",
+    "弹波",
+    "T铁",
+    "U铁",
+    "磁铁",
+    "华司",
+    "盆架",
+    "端子板",
+    "锦丝线",
+    "电线 ",
+    "箱壳",
+    "螺丝",
+    "橡胶圈",
+    "纸箱"
+]
+
 
 def clean_text(text):
     """增强版文本清理函数，移除不可见字符并标准化"""
@@ -103,9 +123,7 @@ def clean_text(text):
 
 
 def delete_rows_by_keyword(sheet, column, keywords):
-    """
-    通用函数：删除指定列中包含任何关键词的行（包含匹配）
-    """
+    """通用函数：删除指定列中包含任何关键词的行（包含匹配）"""
     if not keywords:
         return 0
 
@@ -118,7 +136,7 @@ def delete_rows_by_keyword(sheet, column, keywords):
         cell_clean = clean_text(cell_value)
 
         for kw in cleaned_keywords:
-            if kw in cell_clean:  # 删除仍使用包含匹配
+            if kw in cell_clean:
                 rows_to_delete.append(row)
                 break
 
@@ -134,7 +152,7 @@ def delete_rows_by_keyword(sheet, column, keywords):
 
 
 def process_excel_columns(file_path):
-    """完整处理流程：替换（全字段匹配）→填充→删除→特殊处理→去重→分类"""
+    """完整处理流程：替换→填充→删除→多特殊公司处理→去重→按自定义顺序分类"""
     try:
         if not os.path.exists(file_path):
             print(f"错误: 文件 '{file_path}' 不存在")
@@ -152,49 +170,36 @@ def process_excel_columns(file_path):
         # --------------------------
         # 步骤1：B列字段替换（全字段匹配）
         # --------------------------
-        print("===== 步骤1：B列字段替换（全字段匹配） =====")
-        # 预处理规则：清洗关键词，用于全匹配
+        print("===== 步骤1：B列字段替换 =====")
         cleaned_rules = [(clean_text(k), clean_text(v)) for k, v in REPLACEMENT_RULES if clean_text(k)]
         replaced_count = 0
-        upper_shell_count = 0
 
-        # 统一B列为文本格式
-        for row in range(1, max_row + 1):
-            sheet[f'B{row}'].number_format = '@'
-
-        # 执行全字段匹配替换
         for row in range(1, max_row + 1):
             cell = sheet[f'B{row}']
             original_value = cell.value
 
             if original_value is not None:
-                # 清洗单元格内容（去除不可见字符、标准化）
                 cleaned_value = clean_text(str(original_value).strip())
                 initial_value = cleaned_value
 
-                # 多次替换（全字段匹配）
                 for _ in range(MAX_REPLACE_ROUNDS):
                     changed = False
                     for key, value in cleaned_rules:
-                        # 全字段匹配
                         if cleaned_value == key:
-                            cleaned_value = value  # 替换为目标值
+                            cleaned_value = value
                             replaced_count += 1
-                            if key == clean_text("上壳"):
-                                upper_shell_count += 1
                             changed = True
-                            break  # 全匹配成功后跳出本轮规则循环
+                            break
                     if not changed:
-                        break  # 无变化则结束替换循环
+                        break
 
-                # 更新单元格值（如果有变化）
                 if cleaned_value != initial_value:
                     cell.value = cleaned_value
 
             if row % 5000 == 0:
                 print(f"已处理 {row}/{max_row} 行")
 
-        print(f"替换完成：共替换 {replaced_count} 处，其中'上壳'全匹配替换 {upper_shell_count} 处\n")
+        print(f"替换完成：共替换 {replaced_count} 处\n")
 
         # --------------------------
         # 步骤2：A列填充
@@ -203,7 +208,7 @@ def process_excel_columns(file_path):
         current_a_value = None
         for row in range(1, max_row + 1):
             cell_value = sheet[f'A{row}'].value
-            if cell_value is not None and str(cell_value).strip() != '':
+            if cell_value and str(cell_value).strip():
                 current_a_value = cell_value
             elif current_a_value is not None:
                 sheet[f'A{row}'].value = current_a_value
@@ -220,44 +225,51 @@ def process_excel_columns(file_path):
         # --------------------------
         # 步骤4：删除B列包含指定关键词的行
         # --------------------------
-        print(f"===== 步骤4：删除B列包含{DELETE_B_KEYWORDS[:5]}等关键词的行 =====")  # 只显示前5个关键词
+        print(f"===== 步骤4：删除B列包含{DELETE_B_KEYWORDS[:5]}等关键词的行 =====")
         deleted_b = delete_rows_by_keyword(sheet, "B", DELETE_B_KEYWORDS)
         print(f"B列删除完成：共删除 {deleted_b} 行\n")
         max_row = sheet.max_row
 
         # --------------------------
-        # 新增步骤5：处理特定公司的行
-        # 条件：A列为SPECIAL_COMPANY且B列不是SPECIAL_COMPANY_ALLOWED_B的行删除
+        # 步骤5：处理多个特殊公司的行
         # --------------------------
-        print(f"===== 步骤5：处理特定公司'{SPECIAL_COMPANY}'的行 =====")
-        rows_to_delete = []
-        special_company_clean = clean_text(SPECIAL_COMPANY)
-        allowed_b_clean = clean_text(SPECIAL_COMPANY_ALLOWED_B)
+        print("===== 步骤5：处理多个特殊公司的行 =====")
+        if not SPECIAL_COMPANIES:
+            print("无特殊公司配置，跳过此步骤\n")
+        else:
+            processed_companies = [
+                {
+                    "company_clean": clean_text(company["company"]),
+                    "allowed_b_clean": clean_text(company["allowed_b"]),
+                    "company_original": company["company"]
+                }
+                for company in SPECIAL_COMPANIES
+            ]
 
-        for row in range(1, max_row + 1):
-            a_val = sheet[f'A{row}'].value
-            b_val = sheet[f'B{row}'].value
+            rows_to_delete = []
+            for row in range(1, max_row + 1):
+                a_val = sheet[f'A{row}'].value
+                b_val = sheet[f'B{row}'].value
+                a_clean = clean_text(a_val)
+                b_clean = clean_text(b_val)
 
-            a_clean = clean_text(a_val)
-            b_clean = clean_text(b_val)
+                for comp in processed_companies:
+                    if a_clean == comp["company_clean"] and b_clean != comp["allowed_b_clean"]:
+                        rows_to_delete.append(row)
+                        break
 
-            # 检查A列是否为特定公司
-            if a_clean == special_company_clean:
-                # 检查B列是否为允许的值
-                if b_clean != allowed_b_clean:
-                    rows_to_delete.append(row)
+            rows_to_delete.sort(reverse=True)
+            deleted_special = 0
+            for row in rows_to_delete:
+                if row <= sheet.max_row:
+                    sheet.delete_rows(row)
+                    deleted_special += 1
 
-        # 执行删除
-        rows_to_delete.sort(reverse=True)
-        deleted_special = 0
-        for row in rows_to_delete:
-            if row <= sheet.max_row:
-                sheet.delete_rows(row)
-                deleted_special += 1
-
-        print(
-            f"特定公司行处理完成：共删除 {deleted_special} 行（A列为'{SPECIAL_COMPANY}'且B列不为'{SPECIAL_COMPANY_ALLOWED_B}'）\n")
-        max_row = sheet.max_row
+            print("特殊公司配置清单：")
+            for comp in SPECIAL_COMPANIES:
+                print(f"- {comp['company']}：仅保留B列='{comp['allowed_b']}'的行")
+            print(f"特殊公司行处理完成：共删除 {deleted_special} 行\n")
+            max_row = sheet.max_row
 
         # --------------------------
         # 步骤6：A/B列组合去重
@@ -279,7 +291,6 @@ def process_excel_columns(file_path):
             else:
                 seen_pairs.add(pair)
 
-        # 批量删除重复行
         duplicate_rows.sort(reverse=True)
         batches = []
         if duplicate_rows:
@@ -306,11 +317,14 @@ def process_excel_columns(file_path):
         max_row = sheet.max_row
 
         # --------------------------
-        # 步骤7：按B列分类
+        # 步骤7：按B列自定义顺序分类（核心修改）
         # --------------------------
-        print("===== 步骤7：按B列分类 =====")
-        rows_data = []
+        print("===== 步骤7：按B列自定义顺序分类 =====")
+        # 创建排序优先级字典：指定顺序的词按列表顺序排序，其他词排在后面
+        sort_priority = {clean_text(item): idx for idx, item in enumerate(B_COLUMN_SORT_ORDER)}
+        default_priority = len(B_COLUMN_SORT_ORDER)  # 未在列表中的词的默认优先级
 
+        rows_data = []
         for row in range(1, max_row + 1):
             a_val = sheet[f'A{row}'].value
             b_val = sheet[f'B{row}'].value
@@ -318,11 +332,19 @@ def process_excel_columns(file_path):
                 continue
 
             row_data = [sheet.cell(row=row, column=col).value for col in range(1, max_col + 1)]
-            sort_key = clean_text(b_val) if b_val else chr(127)
+            b_clean = clean_text(b_val)
+
+            # 确定当前B列值的排序优先级
+            priority = sort_priority.get(b_clean, default_priority)
+            # 排序键：(优先级, B列值)，确保相同优先级的按B列值自然排序
+            sort_key = (priority, b_clean)
+
             rows_data.append((sort_key, row_data))
 
+        # 按自定义优先级排序
         rows_data.sort(key=lambda x: x[0])
         print(f"分类完成：共 {len(rows_data)} 行有效数据")
+        print(f"排序顺序：{', '.join(B_COLUMN_SORT_ORDER)}，其他项排在最后")
 
         # 写入分类后的数据
         for row in range(1, max_row + 1):
@@ -343,8 +365,8 @@ def process_excel_columns(file_path):
         workbook.save(file_path)
         print(f"所有处理完成，已覆盖原文件: {file_path}")
         print(f"最终统计：删除A列{deleted_a}行，删除B列{deleted_b}行，"
-              f"删除特定公司行{deleted_special}行，删除重复{deleted_duplicate}行，"
-              f"剩余{len(rows_data)}行")
+              f"删除特殊公司行{deleted_special if SPECIAL_COMPANIES else 0}行，"
+              f"删除重复{deleted_duplicate}行，剩余{len(rows_data)}行")
 
     except Exception as e:
         print(f"\n处理错误: {str(e)}")
