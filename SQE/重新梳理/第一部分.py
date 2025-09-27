@@ -1,11 +1,17 @@
 import openpyxl
 import os
 import re
+import unicodedata
 
 
 def process_excel_columns(file_path):
     """
-    优化去重速度，处理完成后直接覆盖原文件
+    完整处理流程：
+    1. B列字段替换（包含深度清洗和格式处理）
+    2. A列填充（向下复制直到遇到有内容的单元格）
+    3. A/B列组合去重（批量删除重复行）
+    4. 按B列内容分类排序
+    处理后直接覆盖原文件
     """
     try:
         if not os.path.exists(file_path):
@@ -22,49 +28,63 @@ def process_excel_columns(file_path):
         print(f"检测到文件共有 {max_row} 行，{max_col} 列数据")
 
         # --------------------------
-        # 1. 字段替换
+        # 1. B列字段替换（核心功能）
         # --------------------------
-        print("开始进行字段替换...")
-        replacement_rules = {
-            "L-箱壳组": "箱壳",
-            "L下壳组": "箱壳",
-            "R下壳组": "箱壳",
-            "R-下壳组": "箱壳",
-            "上壳": "箱壳",
-            "下壳": "箱壳",
-            "上壳端子加工": "上壳",
-            "上壳组件": "箱壳",
-            "上壳组": "箱壳",
-            "下壳组件": "下壳",
-            "盆架组": "盆架组件",
-            "箱壳组件": "箱壳",
-            "R-箱壳组": "箱壳",
-            "减震绵": "减震棉",
-            "吸音绵": "吸音棉",
-            "尾数箱": "纸箱",
-            "外箱": "纸箱",
-            "鼓纸组件": "鼓纸",
-            "海绵": "减震棉"
-        }
+        print("\n开始进行B列字段替换...")
+        replacement_rules = [
+            ("上壳端子加工", "上壳"),
+            ("L-箱壳组", "箱壳"),
+            ("L下壳组", "箱壳"),
+            ("R下壳组", "箱壳"),
+            ("R-下壳组", "箱壳"),
+            ("R-箱壳组", "箱壳"),
+            ("上壳组件", "箱壳"),
+            ("上壳组", "箱壳"),
+            ("下壳组件", "下壳"),
+            ("盆架组", "盆架组件"),
+            ("箱壳组件", "箱壳"),
+            ("上壳", "箱壳"),
+            ("下壳", "箱壳"),
+            ("减震绵", "减震棉"),
+            ("吸音绵", "吸音棉"),
+            ("尾数箱", "纸箱"),
+            ("外箱", "纸箱"),
+            ("鼓纸组件", "鼓纸"),
+            ("海绵", "减震棉")
+        ]
 
         replaced_count = 0
         upper_shell_count = 0
 
+        # 先清除B列格式，统一为文本格式
         for row in range(1, max_row + 1):
             cell = sheet[f'B{row}']
-            cell_value = cell.value
+            cell.number_format = '@'  # 强制文本格式
 
-            if cell_value is not None:
-                str_original = str(cell_value).strip()
-                str_clean = re.sub(r'\s+', '', str_original).lower()
+        # 执行替换
+        for row in range(1, max_row + 1):
+            cell = sheet[f'B{row}']
+            original_value = cell.value
 
-                for key in replacement_rules:
-                    key_clean = re.sub(r'\s+', '', key).lower()
-                    if str_clean == key_clean:
-                        cell.value = replacement_rules[key]
+            if original_value is not None:
+                # 深度清洗
+                str_original = str(original_value).strip()
+                str_normalized = unicodedata.normalize('NFKC', str_original)
+                str_clean = re.sub(r'[\s\u200b-\u200f\u2028-\u2029]', '', str_normalized)
+                str_clean_lower = str_clean.lower()
+
+                # 尝试匹配替换规则
+                matched = False
+                for key, value in replacement_rules:
+                    key_normalized = unicodedata.normalize('NFKC', key)
+                    key_clean = re.sub(r'[\s\u200b-\u200f]', '', key_normalized).lower()
+
+                    if str_clean_lower == key_clean:
+                        cell.value = value
                         replaced_count += 1
                         if key == "上壳":
                             upper_shell_count += 1
+                        matched = True
                         break
 
             if row % 1000 == 0:
@@ -79,28 +99,32 @@ def process_excel_columns(file_path):
         current_a_value = None
         for row in range(1, max_row + 1):
             cell_value = sheet[f'A{row}'].value
+            # 遇到有内容的单元格则更新当前值
             if cell_value is not None and str(cell_value).strip() != '':
                 current_a_value = cell_value
+            # 空单元格则填充当前值
             elif current_a_value is not None:
                 sheet[f'A{row}'].value = current_a_value
 
         print("A列填充完成")
 
         # --------------------------
-        # 3. 高效去重逻辑
+        # 3. A/B列组合去重（批量删除）
         # --------------------------
         print("\n开始处理A/B列组合去重...")
         seen_pairs = set()
-        duplicate_rows = []  # 存储重复行的行号
+        duplicate_rows = []
 
         for row in range(1, max_row + 1):
-            # 清洗A/B列值
             a_val = sheet[f'A{row}'].value
             b_val = sheet[f'B{row}'].value
-            a_clean = re.sub(r'\s+', '', str(a_val).strip()).lower() if a_val is not None else ''
-            b_clean = re.sub(r'\s+', '', str(b_val).strip()).lower() if b_val is not None else ''
+
+            # 清洗A/B列值用于去重判断
+            a_clean = re.sub(r'[\s\u200b-\u200f]', '', str(a_val).strip()).lower() if a_val is not None else ''
+            b_clean = re.sub(r'[\s\u200b-\u200f]', '', str(b_val).strip()).lower() if b_val is not None else ''
             pair = (a_clean, b_clean)
 
+            # 跳过空组合
             if not a_clean and not b_clean:
                 continue
 
@@ -109,18 +133,13 @@ def process_excel_columns(file_path):
             else:
                 seen_pairs.add(pair)
 
-            if row % 1000 == 0:
-                print(f"已检查 {row} 行...")
-
         print(f"去重检查完成，发现 {len(duplicate_rows)} 行重复数据")
 
-        # 批量删除连续的重复行
+        # 批量删除重复行（按行号降序）
         if duplicate_rows:
-            print("开始批量删除重复行...")
-            # 按行号降序排序
             duplicate_rows.sort(reverse=True)
 
-            # 将连续的行合并为批次
+            # 合并连续行成批次
             batches = []
             current_start = duplicate_rows[0]
             current_length = 1
@@ -135,20 +154,18 @@ def process_excel_columns(file_path):
                     current_length = 1
             batches.append((current_start, current_length))
 
-            # 批量删除每个批次
+            # 执行批量删除
             deleted_total = 0
-            for i, (start_row, length) in enumerate(batches):
+            for start_row, length in batches:
                 sheet.delete_rows(start_row, length)
                 deleted_total += length
-                if (i + 1) % 10 == 0:
-                    print(f"已删除 {deleted_total}/{len(duplicate_rows)} 行重复数据...")
 
             print(f"重复行删除完成，共删除 {deleted_total} 行")
         else:
             print("没有发现重复行，无需删除")
 
         # --------------------------
-        # 4. 按B列分类
+        # 4. 按B列内容分类排序
         # --------------------------
         print("\n开始根据B列内容进行分类...")
         max_row = sheet.max_row  # 重新获取删除后的最大行数
@@ -158,20 +175,21 @@ def process_excel_columns(file_path):
             a_val = sheet[f'A{row}'].value
             b_val = sheet[f'B{row}'].value
 
+            # 跳过A和B都为空的行
             if (a_val is None or str(a_val).strip() == '') and (b_val is None or str(b_val).strip() == ''):
                 continue
 
+            # 收集整行数据
             row_data = [sheet.cell(row=row, column=col).value for col in range(1, max_col + 1)]
-            sort_key = str(b_val).strip().lower() if b_val is not None else ''
+            # 按B列值排序（空值放最后）
+            sort_key = str(b_val).strip().lower() if b_val is not None else chr(127)
             rows_data.append((sort_key, row_data))
 
-            if row % 1000 == 0:
-                print(f"已收集 {row} 行数据...")
-
-        rows_data.sort(key=lambda x: x[0] if x[0] else chr(127))
+        # 排序并写入
+        rows_data.sort(key=lambda x: x[0])
         print(f"分类完成，共 {len(rows_data)} 行有效数据")
 
-        # 清空并写入分类后的数据
+        # 清空工作表并写入分类后的数据
         for row in range(1, max_row + 1):
             for col in range(1, max_col + 1):
                 sheet.cell(row=row, column=col).value = None
@@ -186,7 +204,7 @@ def process_excel_columns(file_path):
         # --------------------------
         # 保存文件（直接覆盖原文件）
         # --------------------------
-        print("\n正在保存文件（直接覆盖原文件）...")
+        print("\n正在保存文件...")
         workbook.save(file_path)
         print(f"所有处理完成，已覆盖原文件: {file_path}")
 
