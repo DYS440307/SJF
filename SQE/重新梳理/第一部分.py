@@ -79,10 +79,12 @@ REPLACEMENT_RULES = [
 
 # 4. 其他配置
 MAX_REPLACE_ROUNDS = 2  # 多次替换的最大轮数
-# 特殊处理的公司名称
-SPECIAL_COMPANY = "池州赛唯特电子科技有限公司"
-# 该公司对应的保留B列值
-SPECIAL_COMPANY_ALLOWED_B = "箱壳"
+SPECIAL_COMPANIES = [
+    {
+        "company": "池州赛唯特电子科技有限公司",
+        "allowed_b": "箱壳"
+    }
+]
 
 
 def clean_text(text):
