@@ -126,10 +126,10 @@ def analyze_all_suppliers(data_file_path, score_file_path, target_month=8):
 
 if __name__ == "__main__":
     # 数据文件路径
-    data_file_path = r"E:\System\desktop\PY\SQE\2025年.xlsx"
+    data_file_path = r"E:\System\desktop\PY\SQE\2025.xlsx"
     # 评分表文件路径
     score_file_path = r"E:\System\desktop\PY\SQE\声乐QCDS综合评分表 - 副本.xlsx"
     # 目标月份（可以修改为其他月份，如7、9等）
-    target_month = 7
+    target_month = 8
     # 调用分析函数
     analyze_all_suppliers(data_file_path, score_file_path, target_month)
