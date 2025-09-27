@@ -1,39 +1,81 @@
 import openpyxl
 import os
-import time
+import re
 
 
 def process_excel_columns(file_path):
     """
-    处理Excel文件的A列，将有内容的单元格值向下复制直到遇到下一个有内容的单元格
-    同时处理A/B列组合去重（保留首次出现的组合）
-    仅删除因去重操作而产生的空行（优化大量行删除效率）
-    处理后直接覆盖原文件，并在控制台显示处理进度
-
-    参数:
-        file_path: Excel文件的路径
+    优化去重速度，通过批量删除连续重复行提升处理效率
     """
     try:
-        # 检查文件是否存在
         if not os.path.exists(file_path):
             print(f"错误: 文件 '{file_path}' 不存在")
             return
 
         print("开始加载Excel文件...")
-        # 加载工作簿（read_only=False确保可写，data_only=True可减少内存占用）
         workbook = openpyxl.load_workbook(file_path, read_only=False, data_only=True)
-        # 获取第一个工作表
         sheet = workbook.active
         print("Excel文件加载完成")
 
-        # 获取最大行数
         max_row = sheet.max_row
-        print(f"检测到文件共有 {max_row} 行数据")
+        max_col = sheet.max_column
+        print(f"检测到文件共有 {max_row} 行，{max_col} 列数据")
 
         # --------------------------
-        # 第一步：处理A列的填充逻辑
+        # 1. 字段替换
         # --------------------------
-        print("开始处理A列填充...", end="")
+        print("开始进行字段替换...")
+        replacement_rules = {
+            "L-箱壳组": "箱壳",
+            "L下壳组": "箱壳",
+            "R下壳组": "箱壳",
+            "R-下壳组": "箱壳",
+            "上壳": "箱壳",
+            "下壳": "箱壳",
+            "上壳端子加工": "上壳",
+            "上壳组件": "箱壳",
+            "上壳组": "箱壳",
+            "下壳组件": "下壳",
+            "盆架组": "盆架组件",
+            "箱壳组件": "箱壳",
+            "R-箱壳组": "箱壳",
+            "减震绵": "减震棉",
+            "吸音绵": "吸音棉",
+            "尾数箱": "纸箱",
+            "外箱": "纸箱",
+            "鼓纸组件": "鼓纸",
+            "海绵": "减震棉"
+        }
+
+        replaced_count = 0
+        upper_shell_count = 0
+
+        for row in range(1, max_row + 1):
+            cell = sheet[f'B{row}']
+            cell_value = cell.value
+
+            if cell_value is not None:
+                str_original = str(cell_value).strip()
+                str_clean = re.sub(r'\s+', '', str_original).lower()
+
+                for key in replacement_rules:
+                    key_clean = re.sub(r'\s+', '', key).lower()
+                    if str_clean == key_clean:
+                        cell.value = replacement_rules[key]
+                        replaced_count += 1
+                        if key == "上壳":
+                            upper_shell_count += 1
+                        break
+
+            if row % 1000 == 0:
+                print(f"已处理 {row} 行替换...")
+
+        print(f"字段替换完成，共替换 {replaced_count} 处，其中'上壳'替换 {upper_shell_count} 处")
+
+        # --------------------------
+        # 2. A列填充
+        # --------------------------
+        print("\n开始处理A列填充...")
         current_a_value = None
         for row in range(1, max_row + 1):
             cell_value = sheet[f'A{row}'].value
@@ -42,107 +84,117 @@ def process_excel_columns(file_path):
             elif current_a_value is not None:
                 sheet[f'A{row}'].value = current_a_value
 
-            if row % 1000 == 0:  # 降低打印频率，减少IO开销
-                print(".", end="", flush=True)
-
-        print("\nA列填充处理完成")
-
-        # 重新获取最大行数
-        max_row = sheet.max_row
+        print("A列填充完成")
 
         # --------------------------
-        # 第二步：处理A/B列组合去重
+        # 3. 高效去重逻辑（核心优化）
         # --------------------------
-        print("开始处理A/B列组合去重...", end="")
+        print("\n开始处理A/B列组合去重...")
         seen_pairs = set()
-        rows_to_clear = []
+        duplicate_rows = []  # 存储重复行的行号
 
         for row in range(1, max_row + 1):
-            a_val = str(sheet[f'A{row}'].value).strip() if sheet[f'A{row}'].value is not None else ''
-            b_val = str(sheet[f'B{row}'].value).strip() if sheet[f'B{row}'].value is not None else ''
-            pair = (a_val, b_val)
+            # 清洗A/B列值
+            a_val = sheet[f'A{row}'].value
+            b_val = sheet[f'B{row}'].value
+            a_clean = re.sub(r'\s+', '', str(a_val).strip()).lower() if a_val is not None else ''
+            b_clean = re.sub(r'\s+', '', str(b_val).strip()).lower() if b_val is not None else ''
+            pair = (a_clean, b_clean)
 
-            if not a_val and not b_val:
+            if not a_clean and not b_clean:
                 continue
 
             if pair in seen_pairs:
-                rows_to_clear.append(row)
+                duplicate_rows.append(row)
             else:
                 seen_pairs.add(pair)
 
-            if row % 1000 == 0:  # 降低打印频率
-                print(".", end="", flush=True)
+            if row % 1000 == 0:
+                print(f"已检查 {row} 行...")
 
-        print("\nA/B列组合去重检查完成")
+        print(f"去重检查完成，发现 {len(duplicate_rows)} 行重复数据")
 
-        # 清空重复的组合
-        print("开始清除重复行...", end="")
-        for i, row in enumerate(rows_to_clear):
-            sheet[f'A{row}'].value = None
-            sheet[f'B{row}'].value = None
+        # 核心优化：批量删除连续的重复行
+        if duplicate_rows:
+            print("开始批量删除重复行...")
+            # 按行号降序排序（确保删除后面的行不影响前面的行号）
+            duplicate_rows.sort(reverse=True)
 
-            if (i + 1) % 1000 == 0:  # 降低打印频率
-                print(".", end="", flush=True)
-
-        print("\n重复行清除完成")
-
-        # --------------------------
-        # 第三步：优化删除去重产生的空行（核心优化点）
-        # --------------------------
-        # 筛选出去重后A、B列都为空的行
-        duplicate_empty_rows = []
-        for row in rows_to_clear:
-            a_val = str(sheet[f'A{row}'].value).strip() if sheet[f'A{row}'].value is not None else ''
-            b_val = str(sheet[f'B{row}'].value).strip() if sheet[f'B{row}'].value is not None else ''
-            if not a_val and not b_val:
-                duplicate_empty_rows.append(row)
-
-        # 按行号从大到小排序（必须保持）
-        duplicate_empty_rows.sort(reverse=True)
-        total_to_delete = len(duplicate_empty_rows)
-        print(f"检测到 {total_to_delete} 个因去重产生的空行，开始删除...", end="")
-
-        if total_to_delete == 0:
-            print("\n没有需要删除的空行")
-        else:
-            # 核心优化：将连续的行分组，批量删除
+            # 将连续的行合并为批次（例如：[5,4,3,1] → [(3,3), (1,1)]）
             batches = []
-            current_batch_start = duplicate_empty_rows[0]
-            current_batch_end = duplicate_empty_rows[0]
+            current_start = duplicate_rows[0]
+            current_length = 1
 
-            for row in duplicate_empty_rows[1:]:
-                # 检查当前行是否与上一行连续（因已倒序，连续行是row = current_batch_end - 1）
-                if row == current_batch_end - 1:
-                    current_batch_end = row
+            for row in duplicate_rows[1:]:
+                if row == current_start - 1:  # 连续行（降序排列，下一行应为当前行-1）
+                    current_length += 1
+                    current_start = row
                 else:
-                    # 新的不连续行，结束上一个批次
-                    batches.append((current_batch_end, current_batch_start - current_batch_end + 1))
-                    current_batch_start = row
-                    current_batch_end = row
-            # 添加最后一个批次
-            batches.append((current_batch_end, current_batch_start - current_batch_end + 1))
+                    batches.append((current_start, current_length))
+                    current_start = row
+                    current_length = 1
+            batches.append((current_start, current_length))  # 添加最后一个批次
 
-            # 批量删除每个批次的行
-            deleted_count = 0
-            for start_row, row_count in batches:
-                sheet.delete_rows(start_row, row_count)
-                deleted_count += row_count
+            # 批量删除每个批次
+            deleted_total = 0
+            for i, (start_row, length) in enumerate(batches):
+                sheet.delete_rows(start_row, length)
+                deleted_total += length
+                # 每处理10个批次显示一次进度
+                if (i + 1) % 10 == 0:
+                    print(f"已删除 {deleted_total}/{len(duplicate_rows)} 行重复数据...")
 
-                # 每删除1000行打印一个点，减少IO操作
-                if deleted_count % 1000 == 0:
-                    print(".", end="", flush=True)
+            print(f"重复行删除完成，共删除 {deleted_total} 行")
+        else:
+            print("没有发现重复行，无需删除")
 
-        print("\n去重产生的空行删除完成")
+        # --------------------------
+        # 4. 按B列分类
+        # --------------------------
+        print("\n开始根据B列内容进行分类...")
+        max_row = sheet.max_row  # 重新获取删除后的最大行数
+        rows_data = []
 
-        # 保存文件（移除了错误的参数）
-        print("正在保存文件...")
-        workbook.save(file_path)  # 修正：移除了不支持的参数
-        print(f"处理完成，已覆盖原文件: {file_path}")
-        print(f"共处理 {len(rows_to_clear)} 行重复的A/B列组合")
-        print(f"共删除 {len(duplicate_empty_rows)} 个因去重产生的空行")
+        for row in range(1, max_row + 1):
+            a_val = sheet[f'A{row}'].value
+            b_val = sheet[f'B{row}'].value
+
+            if (a_val is None or str(a_val).strip() == '') and (b_val is None or str(b_val).strip() == ''):
+                continue
+
+            row_data = [sheet.cell(row=row, column=col).value for col in range(1, max_col + 1)]
+            sort_key = str(b_val).strip().lower() if b_val is not None else ''
+            rows_data.append((sort_key, row_data))
+
+            if row % 1000 == 0:
+                print(f"已收集 {row} 行数据...")
+
+        rows_data.sort(key=lambda x: x[0] if x[0] else chr(127))
+        print(f"分类完成，共 {len(rows_data)} 行有效数据")
+
+        # 清空并写入分类后的数据
+        for row in range(1, max_row + 1):
+            for col in range(1, max_col + 1):
+                sheet.cell(row=row, column=col).value = None
+
+        for new_row, (_, row_data) in enumerate(rows_data, start=1):
+            for col, value in enumerate(row_data, start=1):
+                sheet.cell(row=new_row, column=col).value = value
+
+            if new_row % 1000 == 0:
+                print(f"已写入 {new_row} 行数据...")
+
+        # --------------------------
+        # 保存文件
+        # --------------------------
+        dir_name, file_name = os.path.split(file_path)
+        base_name, ext = os.path.splitext(file_name)
+        new_file_path = os.path.join(dir_name, f"{base_name}_处理完成{ext}")
+        workbook.save(new_file_path)
+        print(f"\n所有处理完成，文件保存至: {new_file_path}")
 
     except Exception as e:
-        print(f"\n处理文件时发生错误: {str(e)}")
+        print(f"\n处理错误: {str(e)}")
 
 
 if __name__ == "__main__":
