@@ -16,12 +16,11 @@ DELETE_B_KEYWORDS = [
     "双组份外磁磁路胶", "无源音箱", "无铅焊锡丝", "全音扬声器",
     "粘异物胶", "防尘帽胶", "磁液", "酒精", "锦丝线固定胶", "保鲜膜",
     "低音扬声器", "塑料袋", "调音纸", "贴纸", "纸垫圈", "保护膜",
-    "套管", "PP垫圈", "高音扬声器"
+    "套管", "PP垫圈", "高音扬声器","吸音棉","海绵圈","连接线"
 ]  # 可添加更多关键词
 
 # 3. A列关键字段替换替换规则（全字段匹配，仅当内容与关键词完全一致时替换）
 REPLACEMENT_RULES = [
-    ("上壳端子加工", "上壳"), ("L-箱壳组", "箱壳"), ("L下壳组", "箱壳"),
     ("R下壳组", "箱壳"), ("R-下壳组", "箱壳"), ("R-箱壳组", "箱壳"),
     ("上壳组件", "箱壳"), ("上壳组", "箱壳"), ("下壳组件", "下壳"),
     ("盆架组", "盆架组件"), ("箱壳组件", "箱壳"), ("上壳", "箱壳"),
@@ -30,7 +29,7 @@ REPLACEMENT_RULES = [
     ("海绵", "减震棉"), ("内盒", "纸箱"), ("PCB", "端子板"),
     ("盖板", "纸箱"), ("音膜组件", "音膜"), ("音膜支架组件", "音膜"),
     ("盆架组件", "盆架"), ("散件成品（橡胶圈）", "橡胶圈"), ("底板", "纸箱"),
-    ("刀卡", "纸箱"), ("低音面罩", "面罩"), ("EVA", "减震棉"),("面盖", "面罩")
+    ("刀卡", "纸箱"), ("低音面罩", "面罩"), ("EVA", "减震棉"), ("面盖", "面罩")
 ]
 
 # 4. 其他配置
@@ -67,30 +66,46 @@ def clean_text(text):
 
 
 def delete_rows_by_keyword(sheet, column, keywords):
-    """通用函数：删除指定列中包含任何关键词的行（包含匹配）"""
+    """优化版：通过保留需要的行来替代删除行，提高处理大量数据时的效率"""
     if not keywords:
         return 0
 
     cleaned_keywords = [clean_text(kw) for kw in keywords]
     max_row = sheet.max_row
-    rows_to_delete = []
+    max_col = sheet.max_column
+
+    # 收集需要保留的行数据
+    rows_to_keep = []
 
     for row in range(1, max_row + 1):
         cell_value = sheet[f'{column}{row}'].value
         cell_clean = clean_text(cell_value)
 
-        for kw in cleaned_keywords:
-            if kw in cell_clean:
-                rows_to_delete.append(row)
-                break
+        # 检查是否包含任何关键词
+        contains_keyword = any(kw in cell_clean for kw in cleaned_keywords)
 
-    rows_to_delete.sort(reverse=True)
-    deleted_count = 0
+        # 如果不包含关键词，则保留此行
+        if not contains_keyword:
+            # 保存整行数据
+            row_data = [sheet.cell(row=row, column=col).value for col in range(1, max_col + 1)]
+            rows_to_keep.append(row_data)
 
-    for row in rows_to_delete:
-        if row <= sheet.max_row:
-            sheet.delete_rows(row)
-            deleted_count += 1
+    # 计算删除的行数
+    deleted_count = max_row - len(rows_to_keep)
+
+    # 清空工作表
+    for row in range(1, max_row + 1):
+        for col in range(1, max_col + 1):
+            sheet.cell(row=row, column=col).value = None
+
+    # 写入保留的行数据
+    for new_row, row_data in enumerate(rows_to_keep, start=1):
+        for col, value in enumerate(row_data, start=1):
+            sheet.cell(row=new_row, column=col).value = value
+
+        # 显示进度
+        if new_row % 5000 == 0:
+            print(f"已处理 {new_row}/{len(rows_to_keep)} 行")
 
     return deleted_count
 
@@ -192,7 +207,7 @@ def process_excel_columns(file_path):
                 for company in SPECIAL_COMPANIES
             ]
 
-            rows_to_delete = []
+            rows_to_keep = []
             # 遍历所有行检查特殊公司规则
             for row in range(1, max_row + 1):
                 a_val = sheet[f'A{row}'].value
@@ -201,34 +216,44 @@ def process_excel_columns(file_path):
                 b_clean = clean_text(b_val)
 
                 # 检查是否匹配任何特殊公司
+                keep_row = True
                 for comp in processed_companies:
                     if a_clean == comp["company_clean"]:
                         # 匹配到公司，检查B列是否为允许值
                         if b_clean != comp["allowed_b_clean"]:
-                            rows_to_delete.append(row)
+                            keep_row = False
                             break  # 匹配到一个公司即停止检查其他公司
 
-            # 执行删除（按行号降序）
-            rows_to_delete.sort(reverse=True)
-            deleted_special = 0
-            for row in rows_to_delete:
-                if row <= sheet.max_row:
-                    sheet.delete_rows(row)
-                    deleted_special += 1
+                if keep_row:
+                    row_data = [sheet.cell(row=row, column=col).value for col in range(1, max_col + 1)]
+                    rows_to_keep.append(row_data)
+
+            # 计算删除的行数
+            deleted_special = max_row - len(rows_to_keep)
+
+            # 清空工作表
+            for row in range(1, max_row + 1):
+                for col in range(1, max_col + 1):
+                    sheet.cell(row=row, column=col).value = None
+
+            # 写入保留的行数据
+            for new_row, row_data in enumerate(rows_to_keep, start=1):
+                for col, value in enumerate(row_data, start=1):
+                    sheet.cell(row=new_row, column=col).value = value
 
             # 显示配置的特殊公司清单
             print("特殊公司配置清单：")
             for comp in SPECIAL_COMPANIES:
                 print(f"- {comp['company']}：仅保留B列='{comp['allowed_b']}'的行")
             print(f"特殊公司行处理完成：共删除 {deleted_special} 行不符合条件的记录\n")
-            max_row = sheet.max_row
+            max_row = len(rows_to_keep)
 
         # --------------------------
         # 步骤6：A/B列组合去重
         # --------------------------
         print("===== 步骤6：A/B列组合去重 =====")
         seen_pairs = set()
-        duplicate_rows = []
+        rows_to_keep = []
 
         for row in range(1, max_row + 1):
             a_clean = clean_text(sheet[f'A{row}'].value)
@@ -238,36 +263,26 @@ def process_excel_columns(file_path):
             if not a_clean and not b_clean:
                 continue
 
-            if pair in seen_pairs:
-                duplicate_rows.append(row)
-            else:
+            if pair not in seen_pairs:
                 seen_pairs.add(pair)
+                row_data = [sheet.cell(row=row, column=col).value for col in range(1, max_col + 1)]
+                rows_to_keep.append(row_data)
 
-        # 批量删除重复行
-        duplicate_rows.sort(reverse=True)
-        batches = []
-        if duplicate_rows:
-            current_start = duplicate_rows[0]
-            current_length = 1
+        # 计算删除的重复行数
+        deleted_duplicate = max_row - len(rows_to_keep)
 
-            for row in duplicate_rows[1:]:
-                if row == current_start - 1:
-                    current_length += 1
-                    current_start = row
-                else:
-                    batches.append((current_start, current_length))
-                    current_start = row
-                    current_length = 1
-            batches.append((current_start, current_length))
+        # 清空工作表
+        for row in range(1, max_row + 1):
+            for col in range(1, max_col + 1):
+                sheet.cell(row=row, column=col).value = None
 
-        deleted_duplicate = 0
-        for start_row, length in batches:
-            if start_row <= sheet.max_row:
-                sheet.delete_rows(start_row, length)
-                deleted_duplicate += length
+        # 写入去重后的数据
+        for new_row, row_data in enumerate(rows_to_keep, start=1):
+            for col, value in enumerate(row_data, start=1):
+                sheet.cell(row=new_row, column=col).value = value
 
         print(f"去重完成：共删除 {deleted_duplicate} 行重复数据\n")
-        max_row = sheet.max_row
+        max_row = len(rows_to_keep)
 
         # --------------------------
         # 步骤7：按B列自定义顺序分类
