@@ -2,6 +2,7 @@ import openpyxl
 import os
 import re
 import unicodedata
+from openpyxl.styles import Alignment
 
 # --------------------------
 # 配置参数（在此处修改关键词和规则）
@@ -16,11 +17,12 @@ DELETE_B_KEYWORDS = [
     "双组份外磁磁路胶", "无源音箱", "无铅焊锡丝", "全音扬声器",
     "粘异物胶", "防尘帽胶", "磁液", "酒精", "锦丝线固定胶", "保鲜膜",
     "低音扬声器", "塑料袋", "调音纸", "贴纸", "纸垫圈", "保护膜",
-    "套管", "PP垫圈", "高音扬声器","吸音棉","海绵圈","连接线"
+    "套管", "PP垫圈", "高音扬声器"
 ]  # 可添加更多关键词
 
 # 3. A列关键字段替换替换规则（全字段匹配，仅当内容与关键词完全一致时替换）
 REPLACEMENT_RULES = [
+    ("上壳端子加工", "上壳"), ("L-箱壳组", "箱壳"), ("L下壳组", "箱壳"),
     ("R下壳组", "箱壳"), ("R-下壳组", "箱壳"), ("R-箱壳组", "箱壳"),
     ("上壳组件", "箱壳"), ("上壳组", "箱壳"), ("下壳组件", "下壳"),
     ("盆架组", "盆架组件"), ("箱壳组件", "箱壳"), ("上壳", "箱壳"),
@@ -48,6 +50,9 @@ B_COLUMN_SORT_ORDER = [
     "华司", "盆架", "端子板", "锦丝线", "电线", "减震棉",
     "箱壳", "螺丝", "橡胶圈", "纸箱"
 ]
+
+# 是否合并B列中内容相同的单元格
+MERGE_B_COLUMN = True  # 设置为False可禁用合并功能
 
 
 def clean_text(text):
@@ -110,8 +115,43 @@ def delete_rows_by_keyword(sheet, column, keywords):
     return deleted_count
 
 
+def merge_same_b_cells(sheet):
+    """合并B列中内容相同的连续单元格"""
+    if sheet.max_row <= 1:
+        return 0  # 没有数据或只有表头，无需合并
+
+    merge_count = 0
+    start_row = 1
+    current_value = clean_text(sheet['B1'].value)
+
+    # 遍历B列所有单元格，记录需要合并的范围
+    for row in range(2, sheet.max_row + 1):
+        cell_value = clean_text(sheet[f'B{row}'].value)
+
+        # 如果当前值与上一个不同，检查是否需要合并
+        if cell_value != current_value:
+            # 如果有多个连续相同的值，进行合并
+            if row - start_row > 1:
+                sheet.merge_cells(f'B{start_row}:B{row - 1}')
+                # 设置垂直居中
+                sheet[f'B{start_row}'].alignment = Alignment(vertical='center', horizontal='left')
+                merge_count += 1
+
+            # 更新起始行和当前值
+            start_row = row
+            current_value = cell_value
+
+    # 处理最后一组连续相同的值
+    if sheet.max_row - start_row >= 1:
+        sheet.merge_cells(f'B{start_row}:B{sheet.max_row}')
+        sheet[f'B{start_row}'].alignment = Alignment(vertical='center', horizontal='left')
+        merge_count += 1
+
+    return merge_count
+
+
 def process_excel_columns(file_path):
-    """完整处理流程：替换→填充→删除→多特殊公司处理→去重→按自定义顺序分类"""
+    """完整处理流程：替换→填充→删除→多特殊公司处理→去重→按自定义顺序分类→合并B列相同内容"""
     try:
         if not os.path.exists(file_path):
             print(f"错误: 文件 '{file_path}' 不存在")
@@ -323,6 +363,18 @@ def process_excel_columns(file_path):
             if new_row % 5000 == 0:
                 print(f"已写入 {new_row} 行数据")
 
+        max_row = len(rows_data)
+
+        # --------------------------
+        # 步骤8：合并B列中内容相同的单元格
+        # --------------------------
+        print("===== 步骤8：合并B列中内容相同的单元格 =====")
+        if MERGE_B_COLUMN and max_row > 0:
+            merged_groups = merge_same_b_cells(sheet)
+            print(f"B列合并完成：共合并 {merged_groups} 组相同内容的单元格\n")
+        else:
+            print("B列合并功能已禁用或无数据可合并\n")
+
         # --------------------------
         # 保存文件
         # --------------------------
@@ -331,7 +383,8 @@ def process_excel_columns(file_path):
         print(f"所有处理完成，已覆盖原文件: {file_path}")
         print(f"最终统计：删除A列{deleted_a}行，删除B列{deleted_b}行，"
               f"删除特殊公司行{deleted_special if SPECIAL_COMPANIES else 0}行，"
-              f"删除重复{deleted_duplicate}行，剩余{len(rows_data)}行")
+              f"删除重复{deleted_duplicate}行，合并B列{merged_groups if MERGE_B_COLUMN else 0}组，"
+              f"剩余{len(rows_data)}行")
 
     except Exception as e:
         print(f"\n处理错误: {str(e)}")
