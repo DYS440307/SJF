@@ -2,6 +2,7 @@ import openpyxl
 import os
 import unicodedata
 import re
+from openpyxl.styles import Alignment
 
 # --------------------------
 # 配置参数
@@ -52,6 +53,9 @@ C_COLUMN_SORT_ORDER = [
     "华司", "盆架", "端子板", "锦丝线", "电线", "减震棉",
     "箱壳", "螺丝", "橡胶圈", "纸箱"
 ]
+
+# 是否合并C列中内容相同的单元格
+MERGE_C_COLUMN = False  # 设置为False可禁用合并功能
 
 # 其他配置
 MAX_REPLACE_ROUNDS = 2  # 多次替换的最大轮数
@@ -173,8 +177,44 @@ def sort_c_column(sheet):
     return len(rows_data)
 
 
+def merge_same_c_cells(sheet):
+    """合并C列中内容相同的连续单元格"""
+    if sheet.max_row <= 1:
+        return 0  # 没有数据或只有表头，无需合并
+
+    merge_count = 0
+    start_row = 1
+    # 获取第一行C列的清理后的值作为初始值
+    current_value = clean_text(sheet['C1'].value)
+
+    # 遍历C列所有单元格，记录需要合并的范围
+    for row in range(2, sheet.max_row + 1):
+        cell_value = clean_text(sheet[f'C{row}'].value)
+
+        # 如果当前值与上一个不同，检查是否需要合并
+        if cell_value != current_value:
+            # 如果有多个连续相同的值，进行合并
+            if row - start_row > 1:
+                sheet.merge_cells(f'C{start_row}:C{row - 1}')
+                # 设置垂直居中对齐
+                sheet[f'C{start_row}'].alignment = Alignment(vertical='center', horizontal='left')
+                merge_count += 1
+
+            # 更新起始行和当前值
+            start_row = row
+            current_value = cell_value
+
+    # 处理最后一组连续相同的值
+    if sheet.max_row - start_row >= 1:
+        sheet.merge_cells(f'C{start_row}:C{sheet.max_row}')
+        sheet[f'C{start_row}'].alignment = Alignment(vertical='center', horizontal='left')
+        merge_count += 1
+
+    return merge_count
+
+
 def process_c_column(file_path):
-    """处理C列完整流程：清理→替换→删除→排序"""
+    """处理C列完整流程：清理→替换→删除→排序→合并相同单元格"""
     try:
         if not os.path.exists(file_path):
             print(f"错误: 文件 '{file_path}' 不存在")
@@ -281,13 +321,25 @@ def process_c_column(file_path):
             print(f"排序顺序：{', '.join(C_COLUMN_SORT_ORDER)}，其他项排在最后\n")
         else:
             print("无数据可排序，跳过排序步骤\n")
+        max_row_after_sort = sheet.max_row
+
+        # --------------------------
+        # 步骤5：合并C列中内容相同的单元格
+        # --------------------------
+        print("===== 步骤5：合并C列中内容相同的单元格 =====")
+        merged_groups = 0
+        if MERGE_C_COLUMN and max_row_after_sort > 0:
+            merged_groups = merge_same_c_cells(sheet)
+            print(f"C列合并完成：共合并 {merged_groups} 组相同内容的单元格\n")
+        else:
+            print("C列合并功能已禁用或无数据可合并\n")
 
         # 保存文件
         print("\n正在保存文件...")
         workbook.save(file_path)
         print(f"所有处理完成，已覆盖原文件: {file_path}")
         print(f"最终统计：模糊替换 {fuzzy_replaced_count} 处，全字段替换 {exact_replaced_count} 处，"
-              f"删除 {deleted_c} 行，排序后剩余 {sheet.max_row} 行")
+              f"删除 {deleted_c} 行，合并 {merged_groups} 组，剩余 {sheet.max_row} 行")
 
     except Exception as e:
         print(f"\n处理错误: {str(e)}")
