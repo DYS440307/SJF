@@ -67,6 +67,7 @@ def process_month(ws1, ws2, month_num, month_name, should_merge):
     total_processed = 0
     valid_count = 0
     ng_total = 0
+    unmatched_suppliers = set()  # 存储未匹配的供应商（去重）
 
     print(f"\n开始处理{month_name}数据...")
     # 从第2行开始统计（跳过表头）
@@ -128,15 +129,26 @@ def process_month(ws1, ws2, month_num, month_name, should_merge):
         cleaned_part = clean_text(part)
         key = (cleaned_supplier, cleaned_part)
 
-        # 写入总数量（第4列）- 未匹配写入"/"
-        total = total_count.get(key, "/")
+        # 检查是否匹配，未匹配则记录供应商
+        if key not in total_count:
+            # 存储原始供应商名称（未清洗的，便于识别）
+            unmatched_suppliers.add(str(supplier).strip())
+
+        # 写入总数量（第4列）- 未匹配写入0
+        total = total_count.get(key, 0)
         ws2.cell(row=row_num, column=4).value = total
 
-        # 写入NG数量（第5列）- 未匹配写入"/"，0则显示0
-        ng = ng_count.get(key)
-        ws2.cell(row=row_num, column=5).value = ng if ng is not None else "/"
+        # 写入NG数量（第5列）- 未匹配写入0
+        ng = ng_count.get(key, 0)
+        ws2.cell(row=row_num, column=5).value = ng
 
         updated_rows += 1
+
+    # 输出未匹配的供应商名称
+    if unmatched_suppliers:
+        print(f"\n{month_name}发现未匹配的供应商：")
+        for supplier in sorted(unmatched_suppliers):  # 排序后输出，便于查看
+            print(f"- {supplier}")
 
     # 根据开关决定是否合并单元格
     if should_merge:
