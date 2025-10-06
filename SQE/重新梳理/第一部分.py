@@ -55,7 +55,7 @@ B_COLUMN_SORT_ORDER = [
 ]
 
 # 是否合并B列中内容相同的单元格
-MERGE_B_COLUMN = True  # 设置为False可禁用合并功能
+MERGE_B_COLUMN = False  # 设置为False可禁用合并功能
 
 
 def clean_text(text):
