@@ -30,7 +30,7 @@ REPLACE_RULES = {
 # 需要删除的行规则
 DELETE_CONDITIONS = {
     "exact_match": ["科技"],  # 完全匹配这些值的行将被删除
-    "contains": ["佳音达"]  # 包含这些值的行将被删除
+    "contains": ["佳音达", "美佳", "强翔", "泓达"]  # 包含这些值的行将被删除
 }
 
 # 调试配置
