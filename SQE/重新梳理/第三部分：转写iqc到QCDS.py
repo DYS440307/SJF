@@ -2,17 +2,17 @@ import openpyxl
 import os
 import re
 
-# ================ 可配置参数（放在最顶部方便修改） ================
-# 1. 处理模式设置
-process_all_months = False  # True=处理12个月份，False=处理单个月份
+# ================ 可配置参数 ================
+process_all_months = True  # True=处理12个月份，False=处理单个月份
 target_month_num = 1  # 单个月份模式时生效（1-12）
-should_merge_cells = False  # True=合并第二列相同单元格，False=不合并
+should_merge_cells = False  # 是否合并第二列相同单元格
+delete_zero_rows = False  # 是否删除第四列值为0的行（注意：默认用 hide 模式）
+delete_mode = 'hide'  # 'hide' 或 'openpyxl'
+create_backup = False  # 是否创建备份文件
 
-# 2. 文件路径设置
+# 文件路径设置
 file1_path = r"E:\System\desktop\PY\SQE\关系梳理\2_惠州声乐品质履历_IQC检验记录汇总 - 副本.xlsx"
 file2_path = r"E:\System\desktop\PY\SQE\声乐QCDS综合评分表_优化 - 副本.xlsx"
-
-
 # ================================================================
 
 
@@ -27,19 +27,14 @@ def clean_text(text):
 
 
 def merge_same_cells(worksheet, column):
-    """合并指定列中连续相同的单元格"""
+    """合并指定列中连续相同的单元格（原样保留你的实现）"""
     if worksheet.max_row < 2:
-        return  # 行数太少无需合并
-
-    start_row = 6  # 从第6行开始处理
+        return
+    start_row = 6
     current_value = worksheet.cell(row=start_row, column=column).value
-
     for row in range(start_row + 1, worksheet.max_row + 1):
         cell_value = worksheet.cell(row=row, column=column).value
-
-        # 如果当前值与上一个不同，检查是否需要合并
         if cell_value != current_value:
-            # 只有当开始行和结束行不同时才合并
             if row - 1 > start_row:
                 worksheet.merge_cells(
                     start_row=start_row,
@@ -49,8 +44,6 @@ def merge_same_cells(worksheet, column):
                 )
             start_row = row
             current_value = cell_value
-
-    # 处理最后一组连续相同的单元格
     if worksheet.max_row > start_row:
         worksheet.merge_cells(
             start_row=start_row,
@@ -60,27 +53,61 @@ def merge_same_cells(worksheet, column):
         )
 
 
-def process_month(ws1, ws2, month_num, month_name, should_merge):
-    """处理单个月份的数据"""
-    total_count = {}  # 存储总数量统计
-    ng_count = {}  # 存储NG数量统计
-    total_processed = 0
-    valid_count = 0
-    ng_total = 0
-    unmatched_suppliers = set()  # 存储未匹配的供应商（去重）
+def delete_rows_with_zero(worksheet, mode='hide'):
+    """
+    删除或隐藏第四列（D列）中值为0的行（从第6行开始）
+    mode:
+        - 'hide'（默认）: 将匹配行设置为隐藏，不改变行号，能保证公式不被移动/错乱（推荐）
+        - 'openpyxl'      : 使用 openpyxl 的 delete_rows 逐行删除（会改变行号，可能导致引用需额外处理）
+    返回: (deleted_count, deleted_rows_list)
+    """
+    if worksheet.max_row < 6:
+        return 0, []
 
-    print(f"\n开始处理{month_name}数据...")
-    # 从第2行开始统计（跳过表头）
-    for row in ws1.iter_rows(min_row=2, values_only=True):
-        total_processed += 1
-        # 提取前四列数据（日期、供应商、部品、状态）
-        date, supplier, part, status = row[:4]
-
-        # 跳过关键信息为空的行
-        if not supplier or not part:
+    rows_to_process = []
+    # 收集要处理的行（自上而下收集，后面根据 mode 决定处理顺序）
+    for r in range(6, worksheet.max_row + 1):
+        cell_value = worksheet.cell(row=r, column=4).value
+        try:
+            if cell_value is not None and float(cell_value) == 0:
+                rows_to_process.append(r)
+        except (ValueError, TypeError):
             continue
 
-        # 判断是否为目标月份数据
+    if not rows_to_process:
+        return 0, []
+
+    deleted_rows = []
+    if mode == 'hide':
+        # 隐藏行（安全，不改变其他单元格的引用）
+        for r in rows_to_process:
+            # 只隐藏行，不改动单元格内容与公式
+            worksheet.row_dimensions[r].hidden = True
+            deleted_rows.append(r)
+        return len(deleted_rows), deleted_rows
+
+    elif mode == 'openpyxl':
+        # 物理删除行 —— 必须从下往上删除以避免索引错位
+        for r in sorted(rows_to_process, reverse=True):
+            worksheet.delete_rows(r, 1)
+            deleted_rows.append(r)
+        return len(deleted_rows), deleted_rows
+
+    else:
+        raise ValueError("不支持的 mode，选择 'hide' 或 'openpyxl'。")
+
+
+def process_month(ws1, ws2, month_num, month_name, should_merge, delete_zero,
+                  file1_suppliers, file2_suppliers):
+    """处理单个月份的数据，收集供应商信息"""
+    total_count = {}
+    ng_count = {}
+
+    # 处理file1数据，收集供应商
+    for row in ws1.iter_rows(min_row=2, values_only=True):
+        date, supplier, part, status = row[:4]
+        if not supplier or not part:
+            continue
         is_target_month = False
         if isinstance(date, str):
             if month_name in date:
@@ -88,126 +115,104 @@ def process_month(ws1, ws2, month_num, month_name, should_merge):
         elif hasattr(date, "month"):
             if date.month == month_num:
                 is_target_month = True
-
         if not is_target_month:
             continue
-
-        # 清洗文本后生成匹配键
         cleaned_supplier = clean_text(supplier)
+        original_supplier = str(supplier).strip()
+        file1_suppliers.add((cleaned_supplier, original_supplier))
         cleaned_part = clean_text(part)
         key = (cleaned_supplier, cleaned_part)
-
-        # 统计总数量
         total_count[key] = total_count.get(key, 0) + 1
-        valid_count += 1
-
-        # 统计NG数量（判断状态是否为NG，不区分大小写）
         if status and str(status).strip().lower() == "ng":
             ng_count[key] = ng_count.get(key, 0) + 1
-            ng_total += 1
 
-    print(f"{month_name}处理完成：共{total_processed}行，有效数据{valid_count}行，其中NG数据{ng_total}行")
-    print(f"统计到{len(total_count)}种供应商-部品组合")
-
-    # 写入当前月份工作表
-    print(f"开始写入{month_name}数据...")
-    updated_rows = 0
-
-    # 从第6行开始处理（文件2数据起始行）
+    # 处理file2数据，写入 total / ng
     for row_num in range(6, ws2.max_row + 1):
-        # 获取文件2中的部品和供应商（B列和C列）
         part = ws2.cell(row=row_num, column=2).value
         supplier = ws2.cell(row=row_num, column=3).value
-
-        # 跳过空值行
         if not supplier or not part:
-            updated_rows += 1
             continue
-
-        # 清洗文本并生成匹配键
         cleaned_supplier = clean_text(supplier)
+        file2_suppliers.add(cleaned_supplier)
         cleaned_part = clean_text(part)
         key = (cleaned_supplier, cleaned_part)
 
-        # 检查是否匹配，未匹配则记录供应商
-        if key not in total_count:
-            # 存储原始供应商名称（未清洗的，便于识别）
-            unmatched_suppliers.add(str(supplier).strip())
+        total_cell = ws2.cell(row=row_num, column=4)
+        total_cell.value = total_count.get(key, 0)
 
-        # 写入总数量（第4列）- 未匹配写入0
-        total = total_count.get(key, 0)
-        ws2.cell(row=row_num, column=4).value = total
+        ng_cell = ws2.cell(row=row_num, column=5)
+        ng_cell.value = ng_count.get(key, 0)
 
-        # 写入NG数量（第5列）- 未匹配写入0
-        ng = ng_count.get(key, 0)
-        ws2.cell(row=row_num, column=5).value = ng
+    # 执行删除/隐藏零值行操作（**不对名为 "汇总" 的 sheet 生效**）
+    deleted_count = 0
+    deleted_rows = []
+    if delete_zero and ws2.title != "汇总":
+        deleted_count, deleted_rows = delete_rows_with_zero(ws2, mode=delete_mode)
 
-        updated_rows += 1
-
-    # 输出未匹配的供应商名称
-    if unmatched_suppliers:
-        print(f"\n{month_name}发现未匹配的供应商：")
-        for supplier in sorted(unmatched_suppliers):  # 排序后输出，便于查看
-            print(f"- {supplier}")
-
-    # 根据开关决定是否合并单元格
+    # 执行合并单元格操作
     if should_merge:
         merge_same_cells(ws2, 2)
-        print(f"{month_name}已合并第二列相同单元格")
-    else:
-        print(f"{month_name}未执行单元格合并（已关闭）")
 
-    print(f"{month_name}处理完成：共更新{updated_rows}行数据")
     return True
 
 
-# 所有月份的名称映射
-all_months = [(i, f"{i}月") for i in range(1, 13)]
-target_month_name = f"{target_month_num}月"
+# ================== 主程序 ==================
+if __name__ == "__main__":
+    if not os.path.exists(file1_path):
+        raise FileNotFoundError(f"文件1不存在：{file1_path}")
+    if not os.path.exists(file2_path):
+        raise FileNotFoundError(f"文件2不存在：{file2_path}")
 
-# ================== 加载文件 ==================
-if not os.path.exists(file1_path):
-    raise FileNotFoundError(f"文件1不存在：{file1_path}")
-if not os.path.exists(file2_path):
-    raise FileNotFoundError(f"文件2不存在：{file2_path}")
+    if create_backup:
+        backup_path = os.path.splitext(file2_path)[0] + "_backup.xlsx"
+        try:
+            import shutil
+            shutil.copy2(file2_path, backup_path)
+        except Exception as e:
+            print(f"创建备份文件失败：{str(e)}")
 
-# 确保文件未被占用
-try:
-    # 只读模式加载文件1（提高性能）
-    wb1 = openpyxl.load_workbook(file1_path, read_only=True, data_only=True)
-    # 普通模式加载文件2（需要写入）
-    wb2 = openpyxl.load_workbook(file2_path)
-except PermissionError:
-    raise PermissionError("文件可能被其他程序占用，请关闭后再试")
+    file1_suppliers = set()
+    file2_suppliers = set()
 
-ws1 = wb1.active  # 默认激活的工作表
+    try:
+        wb1 = openpyxl.load_workbook(file1_path, read_only=True, data_only=True)
+        wb2 = openpyxl.load_workbook(file2_path, data_only=False, keep_vba=True)
+        ws1 = wb1.active
 
-# ================== 处理数据 ==================
-try:
-    if process_all_months:
-        # 处理所有12个月份
-        for month_num, month_name in all_months:
-            if month_name not in wb2.sheetnames:
-                print(f"警告：文件2中未找到工作表{month_name}，已跳过")
-                continue
+        all_months = [(i, f"{i}月") for i in range(1, 13)]
+        target_month_name = f"{target_month_num}月"
 
-            ws2 = wb2[month_name]
-            process_month(ws1, ws2, month_num, month_name, should_merge_cells)
-    else:
-        # 处理单个月份
-        if target_month_name not in wb2.sheetnames:
-            raise ValueError(f"文件2中未找到工作表：{target_month_name}")
+        if process_all_months:
+            for month_num, month_name in all_months:
+                if month_name in wb2.sheetnames:
+                    ws2 = wb2[month_name]
+                    process_month(ws1, ws2, month_num, month_name,
+                                  should_merge_cells, delete_zero_rows,
+                                  file1_suppliers, file2_suppliers)
+        else:
+            if target_month_name in wb2.sheetnames:
+                ws2 = wb2[target_month_name]
+                process_month(ws1, ws2, target_month_num, target_month_name,
+                              should_merge_cells, delete_zero_rows,
+                              file1_suppliers, file2_suppliers)
 
-        ws2 = wb2[target_month_name]
-        process_month(ws1, ws2, target_month_num, target_month_name, should_merge_cells)
+        wb1.close()
+        wb2.save(file2_path)
+        wb2.close()
 
-    # ================== 保存文件 ==================
-    wb1.close()  # 先关闭只读文件
-    wb2.save(file2_path)  # 直接覆盖原文件
-    wb2.close()
-    print(f"\n结果已保存至原文件：{file2_path}")
+        missing_suppliers = set()
+        for cleaned, original in file1_suppliers:
+            if cleaned not in file2_suppliers:
+                missing_suppliers.add(original)
 
-except PermissionError:
-    print(f"\n保存失败：文件可能被其他程序占用，请关闭后重试")
-except Exception as e:
-    print(f"\n处理时发生错误：{str(e)}")
+        if missing_suppliers:
+            print("file1中存在但file2中不存在的供应商：")
+            for supplier in sorted(missing_suppliers):
+                print(f"- {supplier}")
+        else:
+            print("file1中的所有供应商在file2中都存在")
+
+    except PermissionError:
+        print("文件可能被其他程序占用，请关闭后再试")
+    except Exception as e:
+        print(f"处理时发生错误：{str(e)}")
