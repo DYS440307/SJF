@@ -17,10 +17,23 @@ FULLNAME_TARGET_COLUMN = None  # None 表示覆盖原列
 MIN_MATCH_RATIO = 0.5  # 仅在 fallback 使用
 MIN_CHINESE_MATCH_LEN = 2  # 至少匹配连续2个汉字
 
-REPLACE_RULES = {"韵锦": "昀锦", "锦韵": "昀锦", "林飞宇": "林菲宇"}
+REPLACE_RULES = {"韵锦": "昀锦",
+                 "锦韵": "昀锦",
+                 "林飞宇": "林菲宇",
+                 "超了": "超乐",
+                 "新升": "兴升",
+                 "丰晟": "佳晟",
+                 "鑫和盛": "和鑫盛",
+                 "大连": "大联",
+                 "铂韵": "珀韵",
+                 "宴钦": "彦钦"
+
+
+
+                 }
 DELETE_CONDITIONS = {
     "exact_match": ["科技"],
-    "contains": ["佳音达", "美佳", "强翔", "泓达"]
+    "contains": ["佳音达", "美佳", "强翔", "泓达","宏飛洋","宇创","三台","深辉","鸿宇","/"]
 }
 
 SHOW_MATCH_SUGGESTIONS = True
