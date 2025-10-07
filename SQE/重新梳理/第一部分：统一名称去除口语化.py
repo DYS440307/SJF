@@ -394,5 +394,5 @@ def process_excel_columns(file_path):
 
 
 if __name__ == "__main__":
-    EXCEL_PATH = r"E:\System\desktop\PY\SQE\关系梳理\1_采购入库单_已复制 - 副本.xlsx"  # 可修改文件路径
+    EXCEL_PATH = r"E:\System\desktop\PY\SQE\关系梳理\1_采购入库单 - 副本.xlsx"  # 可修改文件路径
     process_excel_columns(EXCEL_PATH)
