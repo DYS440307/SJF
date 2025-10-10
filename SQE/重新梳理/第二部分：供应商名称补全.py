@@ -7,7 +7,7 @@ from difflib import SequenceMatcher
 # ==============================================================================
 # 配置区域
 # ==============================================================================
-ABBR_EXCEL_PATH = r"E:\System\desktop\PY\SQE\关系梳理\2_惠州声乐品质履历_IQC检验记录汇总 - 副本.xlsx"
+ABBR_EXCEL_PATH = r"E:\System\desktop\PY\SQE\关系梳理\2025惠州声乐品质履历_IQC检验记录汇总 - 副本.xlsx"
 FULLNAME_EXCEL_PATH = r"E:\System\desktop\PY\SQE\关系梳理\1_采购入库单 - 副本.xlsx"
 
 ABBR_COLUMN = 2

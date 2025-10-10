@@ -11,7 +11,7 @@ delete_mode = 'hide'  # 'hide' 或 'openpyxl'
 create_backup = False  # 是否创建备份文件
 
 # 文件路径设置
-file1_path = r"E:\System\desktop\PY\SQE\关系梳理\2_惠州声乐品质履历_IQC检验记录汇总 - 副本.xlsx"
+file1_path = r"E:\System\desktop\PY\SQE\关系梳理\2025惠州声乐品质履历_IQC检验记录汇总 - 副本.xlsx"
 file2_path = r"E:\System\desktop\PY\SQE\声乐QCDS综合评分表_优化 - 副本.xlsx"
 # ================================================================
 
