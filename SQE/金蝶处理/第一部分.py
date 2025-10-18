@@ -30,13 +30,13 @@ try:
         # 步骤2：清空B1
         ws.cell(row=1, column=2).value = None
 
-    # 步骤3：检查所有行，若A列和B列同时有值，则清空B列
-    for row in range(1, max_row + 1):
-        col1_value = ws.cell(row=row, column=1).value  # 第一列（A列）值
-        col2_value = ws.cell(row=row, column=2).value  # 第二列（B列）值
-        # 若两列同时存在数值（非空），则清空第二列
-        if col1_value is not None and col2_value is not None:
-            ws.cell(row=row, column=2).value = None
+    # # 步骤3：检查所有行，若A列和B列同时有值，则清空B列
+    # for row in range(1, max_row + 1):
+    #     col1_value = ws.cell(row=row, column=1).value  # 第一列（A列）值
+    #     col2_value = ws.cell(row=row, column=2).value  # 第二列（B列）值
+    #     # 若两列同时存在数值（非空），则清空第二列
+    #     if col1_value is not None and col2_value is not None:
+    #         ws.cell(row=row, column=2).value = None
 
     # ----------------------
     # 处理第5、6、7列（E、F、G列）：
