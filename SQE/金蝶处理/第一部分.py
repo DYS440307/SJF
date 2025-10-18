@@ -50,9 +50,39 @@ try:
         # 清空原第一行
         ws.cell(row=1, column=col).value = None
 
+    # ----------------------
+    # 去重逻辑（保留首段，删除重复段）
+    # ----------------------
+    seen = set()
+    rows_to_delete = []
+
+    row = 1
+    while row <= ws.max_row:
+        a_val = ws.cell(row=row, column=1).value
+        if a_val is not None:
+            if a_val in seen:
+                # 重复编号 -> 删除该段
+                start_row = row
+                end_row = row
+                # 找段尾（下一个A有值之前）
+                while end_row + 1 <= ws.max_row and ws.cell(row=end_row + 1, column=1).value is None:
+                    end_row += 1
+                # 标记删除区间
+                rows_to_delete.extend(range(start_row, end_row + 1))
+                row = end_row + 1
+                continue
+            else:
+                seen.add(a_val)
+        row += 1
+
+    # 倒序删除，防止索引错乱
+    for r in sorted(rows_to_delete, reverse=True):
+        ws.delete_rows(r, 1)
+
     # 保存修改
     wb.save(file_path)
-    print(f"操作完成，文件已保存至：{file_path}")
+    print(f"✅ 操作完成并去重，已保存：{file_path}")
+    print(f"删除了 {len(rows_to_delete)} 行")
 
 except Exception as e:
     print(f"处理过程中发生错误：{str(e)}")
