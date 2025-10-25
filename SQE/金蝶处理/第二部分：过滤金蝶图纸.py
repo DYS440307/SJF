@@ -4,7 +4,7 @@ import re
 # =========================
 # 配置区域
 # =========================
-folder_path = r"E:\System\desktop\PY\图纸归档系统\研发公盘拉出来"
+folder_path = r"E:\System\desktop\PY\BOMM"
 
 # 删除关键词（文件名中包含这些词就删除）
 delete_keywords = ["SOP", "控制", "承认书", "报告", "外形图", "定位治具", "变更"]

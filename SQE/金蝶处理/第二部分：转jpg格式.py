@@ -71,5 +71,5 @@ def process_all_pdfs_in_folder(folder_path):
 
 
 if __name__ == "__main__":
-    target_folder = r"E:\System\desktop\PY\图纸归档系统\研发公盘拉出来"
+    target_folder = r"E:\System\desktop\PY\BOMM"
     process_all_pdfs_in_folder(target_folder)
