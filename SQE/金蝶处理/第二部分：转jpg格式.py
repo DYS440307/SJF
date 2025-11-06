@@ -2,7 +2,7 @@ import os
 from wand.image import Image
 from wand.color import Color
 
-def process_single_pdf(pdf_path, dpi=300):
+def process_single_pdf(pdf_path, dpi=500):
     """
     处理单个PDF：
     1. 提取所有页为高清白底图片

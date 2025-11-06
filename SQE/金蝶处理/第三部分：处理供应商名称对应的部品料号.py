@@ -1,7 +1,7 @@
 import pandas as pd
 
 # 文件路径
-file_path = r"E:\System\desktop\PY\图纸归档系统\供应商原档 - 副本.xlsx"
+file_path = r"E:\System\download\收料通知单_2025110609000941_236281.xlsx"
 
 # 读取数据
 df = pd.read_excel(file_path)

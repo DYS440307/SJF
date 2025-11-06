@@ -24,7 +24,7 @@ def normalize_filename(name):
 # ==============================
 # PDF 转长图函数
 # ==============================
-def process_single_pdf(pdf_path, dpi=300):
+def process_single_pdf(pdf_path, dpi=500):
     try:
         file_dir, file_name = os.path.split(pdf_path)
         base_name = os.path.splitext(file_name)[0]
