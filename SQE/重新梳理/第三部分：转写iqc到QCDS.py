@@ -4,14 +4,14 @@ import re
 
 # ================ 可配置参数 ================
 process_all_months = False  # True=处理12个月份，False=处理单个月份
-target_month_num = 10  # 单个月份模式时生效（1-12）
+target_month_num = 11  # 单个月份模式时生效（1-12）
 should_merge_cells = False  # 是否合并第二列相同单元格
 delete_zero_rows = False  # 是否删除第四列值为0的行（注意：默认用 hide 模式）
 delete_mode = 'hide'  # 'hide' 或 'openpyxl'
 create_backup = False  # 是否创建备份文件
 
 # 文件路径设置
-file1_path = r"E:\System\desktop\PY\SQE\关系梳理\惠州声乐品质履历_IQC检验记录汇总.xlsx"
+file1_path = r"E:\System\desktop\PY\SQE\关系梳理\声乐（惠州）品控履历表_IQC检验记录（量产）.xlsx"
 file2_path = r"E:\System\desktop\PY\SQE\声乐QCDS综合评分表_优化 - 副本.xlsx"
 # ================================================================
 

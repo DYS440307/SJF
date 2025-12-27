@@ -8,7 +8,7 @@ from openpyxl.styles import Alignment
 # 配置参数
 # --------------------------
 # 要处理的Excel文件路径
-EXCEL_PATH = r"E:\System\desktop\PY\SQE\关系梳理\惠州声乐品质履历_IQC检验记录汇总.xlsx"
+EXCEL_PATH = r"E:\System\desktop\PY\SQE\关系梳理\声乐（惠州）品控履历表_IQC检验记录（量产）.xlsx"
 
 # C列关键字段替换规则（全字段匹配，仅当内容与关键词完全一致时替换）
 REPLACEMENT_RULES = [
