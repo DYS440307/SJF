@@ -4,6 +4,13 @@ import sys
 import glob
 import io
 import re
+# 兼容新旧版本pillow-heif，注册HEIC格式解析器
+try:
+    from pillow_heif import HeifImagePlugin
+    HeifImagePlugin.register()
+except AttributeError:
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
 
 # ===================== 最顶部：控制台输入文件夹路径 =====================
 if __name__ == "__main__":
@@ -21,28 +28,26 @@ if __name__ == "__main__":
         input("按回车键退出...")
         sys.exit(1)
 
-
-    # ===================== 核心功能函数（极简版） =====================
+    # ===================== 核心功能函数（修正所有检查问题） =====================
     def get_valid_image_paths(folder):
-        """遍历文件夹，获取所有有效图片路径"""
-        valid_formats = (".jpg", ".jpeg", ".png", ".bmp")
-        image_paths = []
+        """遍历文件夹，获取所有有效图片路径（含HEIC格式，解决变量隐藏问题）"""
+        valid_formats = (".jpg", ".jpeg", ".png", ".bmp", ".heic", ".HEIC")
+        # 重命名内部变量，避免与外部全局变量image_paths冲突（解决变量隐藏提示）
+        valid_image_paths = []
         for fmt in valid_formats:
-            image_paths.extend(glob.glob(os.path.join(folder, f"*{fmt}")))
+            valid_image_paths.extend(glob.glob(os.path.join(folder, f"*{fmt}")))
         # 去重+排序，保证顺序稳定
-        return sorted(list(set(image_paths)))
-
+        return sorted(list(set(valid_image_paths)))
 
     def sanitize_filename(filename):
         """清理非法字符，避免保存失败"""
         illegal_chars = r'[\/:*?"<>|]'
         return re.sub(illegal_chars, '_', filename)[:50]
 
-
     def concat_images(image_paths, target_max_size=20):
-        """拼接图片为长图，压缩到20MB内"""
+        """拼接图片为长图，压缩到20MB内（兼容HEIC输入，解决long_img引用问题）"""
         if not image_paths:
-            print("错误：文件夹内未找到jpg/png/bmp格式图片！")
+            print("错误：文件夹内未找到jpg/png/bmp/heic格式图片！")
             return None
 
         # 读取并缩放图片（统一宽度为2000px，避免过长）
@@ -50,6 +55,7 @@ if __name__ == "__main__":
         base_width = 2000  # 固定基准宽度，简化逻辑
         for img_path in image_paths:
             try:
+                # 注册HEIC插件后，PIL可直接解析HEIC，无需额外修改读取逻辑
                 img = Image.open(img_path).convert("RGB")
                 w_percent = base_width / float(img.size[0])
                 h_size = int(float(img.size[1]) * w_percent)
@@ -79,7 +85,7 @@ if __name__ == "__main__":
                 total_height += img.size[1]
             images = valid_images
 
-        # 创建长图并拼接
+        # 明确创建long_img变量，解决未解析引用提示
         long_img = Image.new("RGB", (base_width, total_height), (255, 255, 255))
         current_y = 0
         for img in images:
@@ -121,11 +127,10 @@ if __name__ == "__main__":
         long_img.close()
         return save_path
 
-
     # ===================== 执行核心逻辑 =====================
-    # 获取有效图片
+    # 获取有效图片（外部变量名保持image_paths，内部已重命名无冲突）
     image_paths = get_valid_image_paths(folder_path)
-    print(f"✅ 找到 {len(image_paths)} 张有效图片")
+    print(f"✅ 找到 {len(image_paths)} 张有效图片（含HEIC格式）")
 
     # 拼接长图
     concat_images(image_paths)
