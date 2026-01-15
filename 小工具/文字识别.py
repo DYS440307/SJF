@@ -1,20 +1,49 @@
 import pdfplumber
 import re
 import os
+from datetime import datetime, timedelta
 
 # ================= 配置 =================
-folder_path = r"E:\System\download\厂商ROHS、REACH - 副本"  # 待处理文件夹
-output_unmatched_file = os.path.join(folder_path, "未匹配文件.txt")
+folder_path = r"E:\System\download\厂商ROHS、REACH"
+unmatched_file = os.path.join(folder_path, "未匹配文件.txt")
+duplicate_file = os.path.join(folder_path, "重复文件.txt")
 
+# ================= 工具函数 =================
 def clean_filename(text):
-    """清理 Windows 文件名非法字符"""
     return re.sub(r'[\\/:*?"<>|]', '', text).strip()
 
-# ================= 定义三套识别方案 =================
+def parse_date(date_str):
+    for fmt in (
+        "%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d",
+        "%d-%m-%Y", "%d/%m/%Y", "%d.%m.%Y",
+        "%B %d, %Y", "%b %d, %Y",
+        "%Y年%m月%d日"
+    ):
+        try:
+            return datetime.strptime(date_str, fmt)
+        except:
+            continue
+    return None
+
+def normalize(text):
+    return text.replace(":", "").replace("：", "").replace(" ", "")
+
+def generate_unique_path(base_path):
+    """如果文件存在，自动追加 _重复N"""
+    if not os.path.exists(base_path):
+        return base_path, False
+
+    base, ext = os.path.splitext(base_path)
+    i = 1
+    while True:
+        new_path = f"{base}_重复{i}{ext}"
+        if not os.path.exists(new_path):
+            return new_path, True
+        i += 1
+
+# ================= 匹配方案 =================
 schemes = [
-    # 中文老版
     {
-        "name": "中文老版",
         "fields": {
             "client": ["客户名称"],
             "sample": ["样品名称"],
@@ -22,9 +51,7 @@ schemes = [
         },
         "lang": "中"
     },
-    # 英文版
     {
-        "name": "英文版",
         "fields": {
             "client": ["Client Name"],
             "sample": ["Sample Name"],
@@ -32,86 +59,108 @@ schemes = [
         },
         "lang": "英"
     },
-    # 新增版
     {
-        "name": "新增版",
         "fields": {
             "client": ["报告抬头公司名称"],
             "sample": ["样品型号"],
             "date": ["样品接收日期"]
         },
-        "lang": "中"  # 可根据需要修改成英文
+        "lang": "中"
+    },
+    {
+        "fields": {
+            "client": ["Company Name"],
+            "sample": ["Sample Name"],
+            "date": ["Sample Received Date"]
+        },
+        "lang": "英"
     }
 ]
 
-# ================= 批量处理 =================
-unmatched_files = []
+# ================= 主处理 =================
+unmatched = []
+duplicates = []
 
-for root, dirs, files in os.walk(folder_path):
-    for f in files:
-        if not f.lower().endswith(".pdf"):
+for root, _, files in os.walk(folder_path):
+    for file in files:
+        if not file.lower().endswith(".pdf"):
             continue
-        pdf_path = os.path.join(root, f)
+
+        pdf_path = os.path.join(root, file)
+
         try:
             with pdfplumber.open(pdf_path) as pdf:
                 text = pdf.pages[0].extract_text()
+
             if not text:
-                unmatched_files.append(pdf_path)
+                unmatched.append(pdf_path)
                 continue
 
             lines = [l.strip() for l in text.split("\n") if l.strip()]
             matched = False
-            result = {}
-            used_scheme = None
-            lang_suffix = ""
 
-            # 尝试三套方案
             for scheme in schemes:
                 temp = {}
                 for i, line in enumerate(lines):
+                    line_n = normalize(line)
                     for field, keys in scheme["fields"].items():
                         if field in temp:
                             continue
                         for key in keys:
-                            if key in line:
-                                # 1️⃣ 尝试同一行冒号后取值
+                            if normalize(key) in line_n:
                                 m = re.search(rf"{re.escape(key)}[:：]?\s*(.+)", line)
                                 if m and m.group(1).strip():
                                     temp[field] = m.group(1).strip()
-                                # 2️⃣ 否则取下一行
                                 elif i + 1 < len(lines):
                                     temp[field] = lines[i + 1].strip()
+
                 if len(temp) == 3:
-                    result = temp
-                    used_scheme = scheme["name"]
-                    lang_suffix = scheme["lang"]
                     matched = True
+                    lang = scheme["lang"]
+                    result = temp
                     break
 
             if not matched:
-                unmatched_files.append(pdf_path)
+                unmatched.append(pdf_path)
                 continue
 
-            # ================= 重命名 =================
-            client = clean_filename(result["client"])
-            sample = clean_filename(result["sample"])
-            date = clean_filename(result["date"])
+            dt = parse_date(result["date"])
+            if not dt:
+                unmatched.append(pdf_path)
+                continue
 
-            new_name = f"{client}_{sample}_{date}_{lang_suffix}.pdf"
-            new_path = os.path.join(root, new_name)
+            expire = dt + timedelta(days=365)
 
-            os.rename(pdf_path, new_path)
-            print(f"[重命名成功] {pdf_path} → {new_path}")
+            new_name = (
+                f"{clean_filename(result['client'])}_"
+                f"{clean_filename(result['sample'])}_"
+                f"{dt.strftime('%Y-%m-%d')}_{lang}_"
+                f"过期时间({expire.strftime('%Y-%m-%d')}).pdf"
+            )
+
+            target_path = os.path.join(root, new_name)
+            final_path, is_duplicate = generate_unique_path(target_path)
+
+            os.rename(pdf_path, final_path)
+
+            if is_duplicate:
+                duplicates.append(final_path)
+
+            print(f"[完成] {final_path}")
 
         except Exception as e:
-            print(f"[处理失败] {pdf_path}，错误：{e}")
-            unmatched_files.append(pdf_path)
+            unmatched.append(pdf_path)
+            print(f"[异常] {pdf_path} → {e}")
 
-# ================= 输出未匹配文件 =================
-if unmatched_files:
-    with open(output_unmatched_file, "w", encoding="utf-8") as f:
-        for path in unmatched_files:
-            f.write(path + "\n")
-    print(f"\n未匹配文件已保存到：{output_unmatched_file}")
-else:
-    print("\n所有文件均已匹配并重命名成功！")
+# ================= 输出记录 =================
+if unmatched:
+    with open(unmatched_file, "w", encoding="utf-8") as f:
+        f.write("\n".join(unmatched))
+
+if duplicates:
+    with open(duplicate_file, "w", encoding="utf-8") as f:
+        f.write("\n".join(duplicates))
+
+print("\n处理完成")
+print(f"未匹配：{len(unmatched)}")
+print(f"重复命名：{len(duplicates)}")
