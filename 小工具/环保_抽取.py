@@ -4,7 +4,7 @@ import os
 from datetime import datetime, timedelta
 
 # ================= 配置 =================
-folder_path = r"E:\System\download\厂商ROHS、REACH"
+folder_path = r"E:\System\download\1-诚意达\REACH"
 unmatched_file = os.path.join(folder_path, "未匹配文件.txt")
 duplicate_file = os.path.join(folder_path, "重复文件.txt")
 
@@ -145,12 +145,12 @@ for root, _, files in os.walk(folder_path):
             # ① 特殊整组
             result, lang = try_special_group(lines)
 
-            # ② 中文组
+            # ② 普通中文组
             if not result:
                 cn_schemes = [s for s in schemes if s["lang"] == "中"]
                 result, lang = try_normal_group(cn_schemes, lines)
 
-            # ③ 英文兜底（必须完全无中文痕迹）
+            # ③ 英文兜底（仅当完全无中文）
             if not result and not has_cn:
                 en_schemes = [s for s in schemes if s["lang"] == "英"]
                 result, lang = try_normal_group(en_schemes, lines)
@@ -166,16 +166,33 @@ for root, _, files in os.walk(folder_path):
 
             expire = dt + timedelta(days=365)
 
+            # ===== 生成基础文件名 =====
             new_name = (
                 f"{clean_filename(result['client'])}_"
                 f"{clean_filename(result['sample'])}_"
                 f"{dt.strftime('%Y-%m-%d')}_{lang}_"
-                f"过期时间({expire.strftime('%Y-%m-%d')}).pdf"
+                f"过期时间({expire.strftime('%Y-%m-%d')})"
             )
 
+            # ===== 中文组额外拼接 RoHs / REACH(SVHC) =====
+            if lang == "中":
+                keywords = []
+                for line in lines:
+                    l_lower = line.lower()
+                    # 识别 RoHs
+                    if 'rohs' in l_lower and 'RoHs' not in keywords:
+                        keywords.append('RoHs')
+                    # 识别 REACH 或 SVHC
+                    if ('reach' in l_lower or 'svhc' in l_lower) and 'REACH(SVHC)' not in keywords:
+                        keywords.append('REACH(SVHC)')
+                if keywords:
+                    new_name += '_' + '_'.join(keywords)
+
+            new_name += ".pdf"
+
+            # ===== 处理重复 =====
             final_path, is_dup = generate_unique_path(os.path.join(root, new_name))
             os.rename(pdf_path, final_path)
-
             if is_dup:
                 duplicates.append(final_path)
 
@@ -185,7 +202,7 @@ for root, _, files in os.walk(folder_path):
             unmatched.append(pdf_path)
             print(f"[异常] {pdf_path} → {e}")
 
-# ================= 输出 =================
+# ================= 输出记录 =================
 if unmatched:
     with open(unmatched_file, "w", encoding="utf-8") as f:
         f.write("\n".join(unmatched))
