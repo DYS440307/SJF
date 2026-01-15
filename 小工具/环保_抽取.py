@@ -4,7 +4,7 @@ import os
 from datetime import datetime, timedelta
 
 # ================= 配置 =================
-folder_path = r"E:\System\download\厂商ROHS、REACH\13-奕翔\REACH"
+folder_path = r"E:\System\download\厂商ROHS、REACH"
 unmatched_file = os.path.join(folder_path, "未匹配文件.txt")
 duplicate_file = os.path.join(folder_path, "重复文件.txt")
 
@@ -16,14 +16,11 @@ def normalize(text):
     return text.replace(":", "").replace("：", "").replace(" ", "")
 
 def parse_date(date_str):
-    for fmt in (
-        "%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d",
-        "%Y年%m月%d日"
-    ):
+    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d", "%Y年%m月%d日"):
         try:
             return datetime.strptime(date_str, fmt)
         except:
-            continue
+            pass
     return None
 
 def generate_unique_path(base_path):
@@ -37,7 +34,18 @@ def generate_unique_path(base_path):
             return new_path, True
         i += 1
 
-# ================= 新增：特殊整组（最高优先级） =================
+def contains_any_chinese_key(lines, schemes):
+    for scheme in schemes:
+        if scheme["lang"] != "中":
+            continue
+        for keys in scheme["fields"].values():
+            for key in keys:
+                for line in lines:
+                    if normalize(key) in normalize(line):
+                        return True
+    return False
+
+# ================= 特殊整组（最高优先） =================
 SPECIAL_GROUP = {
     "lang": "中",
     "patterns": {
@@ -47,10 +55,8 @@ SPECIAL_GROUP = {
     }
 }
 
-
-# ================= 常规匹配方案 =================
+# ================= 成组方案（强绑定） =================
 schemes = [
-    # ===== 中文方案 1 =====
     {
         "lang": "中",
         "fields": {
@@ -59,8 +65,6 @@ schemes = [
             "date": ["样品接收时间"]
         }
     },
-
-    # ===== 中文方案 2 =====
     {
         "lang": "中",
         "fields": {
@@ -69,7 +73,6 @@ schemes = [
             "date": ["样品接收日期"]
         }
     },
-
     {
         "lang": "中",
         "fields": {
@@ -78,8 +81,6 @@ schemes = [
             "date": ["样品接收日期"]
         }
     },
-
-    # ===== 英文方案 =====
     {
         "lang": "英",
         "fields": {
@@ -90,7 +91,6 @@ schemes = [
     }
 ]
 
-
 # ================= 匹配函数 =================
 def try_special_group(lines):
     temp = {}
@@ -100,9 +100,7 @@ def try_special_group(lines):
             if m:
                 temp[field] = m.group(1).strip()
                 break
-    if len(temp) == 3:
-        return temp, SPECIAL_GROUP["lang"]
-    return None, None
+    return (temp, SPECIAL_GROUP["lang"]) if len(temp) == 3 else (None, None)
 
 def try_normal_group(scheme_list, lines):
     for scheme in scheme_list:
@@ -123,9 +121,8 @@ def try_normal_group(scheme_list, lines):
             return temp, scheme["lang"]
     return None, None
 
-# ================= 主处理 =================
-unmatched = []
-duplicates = []
+# ================= 主流程 =================
+unmatched, duplicates = [], []
 
 for root, _, files in os.walk(folder_path):
     for file in files:
@@ -143,17 +140,18 @@ for root, _, files in os.walk(folder_path):
                 continue
 
             lines = [l.strip() for l in text.split("\n") if l.strip()]
+            has_cn = contains_any_chinese_key(lines, schemes)
 
-            # ===== ① 最高优先：委托方/Applicant 整组 =====
+            # ① 特殊整组
             result, lang = try_special_group(lines)
 
-            # ===== ② 普通中文 =====
+            # ② 中文组
             if not result:
                 cn_schemes = [s for s in schemes if s["lang"] == "中"]
                 result, lang = try_normal_group(cn_schemes, lines)
 
-            # ===== ③ 英文兜底 =====
-            if not result:
+            # ③ 英文兜底（必须完全无中文痕迹）
+            if not result and not has_cn:
                 en_schemes = [s for s in schemes if s["lang"] == "英"]
                 result, lang = try_normal_group(en_schemes, lines)
 
@@ -175,12 +173,10 @@ for root, _, files in os.walk(folder_path):
                 f"过期时间({expire.strftime('%Y-%m-%d')}).pdf"
             )
 
-            target_path = os.path.join(root, new_name)
-            final_path, is_duplicate = generate_unique_path(target_path)
-
+            final_path, is_dup = generate_unique_path(os.path.join(root, new_name))
             os.rename(pdf_path, final_path)
 
-            if is_duplicate:
+            if is_dup:
                 duplicates.append(final_path)
 
             print(f"[完成] {final_path}")
