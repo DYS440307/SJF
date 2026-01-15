@@ -4,7 +4,7 @@ import os
 from datetime import datetime, timedelta
 
 # ================= 配置 =================
-folder_path = r"E:\System\download\厂商ROHS、REACH\22-金睿得\ROHS"
+folder_path = r"E:\System\download\厂商ROHS、REACH\13-奕翔\REACH"
 unmatched_file = os.path.join(folder_path, "未匹配文件.txt")
 duplicate_file = os.path.join(folder_path, "重复文件.txt")
 
@@ -18,8 +18,6 @@ def normalize(text):
 def parse_date(date_str):
     for fmt in (
         "%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d",
-        "%d-%m-%Y", "%d/%m/%Y", "%d.%m.%Y",
-        "%B %d, %Y", "%b %d, %Y",
         "%Y年%m月%d日"
     ):
         try:
@@ -39,9 +37,20 @@ def generate_unique_path(base_path):
             return new_path, True
         i += 1
 
-# ================= 匹配方案 =================
+# ================= 新增：特殊整组（最高优先级） =================
+SPECIAL_GROUP = {
+    "lang": "中",
+    "patterns": {
+        "client": r"委托方\s*/\s*Applicant.*?[:：]\s*(.+)",
+        "sample": r"样品名称\s*/\s*Sample\s*Name.*?[:：]\s*(.+)",
+        "date": r"样品接收日期\s*/\s*Date\s*of\s*Receipt\s*sample.*?[:：]\s*(\d{4}[-/.]\d{2}[-/.]\d{2})"
+    }
+}
+
+
+# ================= 常规匹配方案 =================
 schemes = [
-    # ===== 中文优先组 =====
+    # ===== 中文方案 1 =====
     {
         "lang": "中",
         "fields": {
@@ -50,6 +59,8 @@ schemes = [
             "date": ["样品接收时间"]
         }
     },
+
+    # ===== 中文方案 2 =====
     {
         "lang": "中",
         "fields": {
@@ -58,6 +69,7 @@ schemes = [
             "date": ["样品接收日期"]
         }
     },
+
     {
         "lang": "中",
         "fields": {
@@ -67,31 +79,32 @@ schemes = [
         }
     },
 
-    # ===== 英文兜底组 =====
+    # ===== 英文方案 =====
     {
         "lang": "英",
         "fields": {
             "client": ["Client Name"],
             "sample": ["Sample Name"],
-            "date": ["Sample Receiving Date", "Sample Received Date", "Receiving Date"]
-        }
-    },
-    {
-        "lang": "英",
-        "fields": {
-            "client": ["Company Name"],
-            "sample": ["Sample Name"],
-            "date": ["Sample Received Date"]
+            "date": ["Sample Receiving Date", "Sample Received Date"]
         }
     }
-
 ]
 
-# ================= 主处理 =================
-unmatched = []
-duplicates = []
 
-def try_match(scheme_list, lines):
+# ================= 匹配函数 =================
+def try_special_group(lines):
+    temp = {}
+    for field, pattern in SPECIAL_GROUP["patterns"].items():
+        for line in lines:
+            m = re.search(pattern, line)
+            if m:
+                temp[field] = m.group(1).strip()
+                break
+    if len(temp) == 3:
+        return temp, SPECIAL_GROUP["lang"]
+    return None, None
+
+def try_normal_group(scheme_list, lines):
     for scheme in scheme_list:
         temp = {}
         for i, line in enumerate(lines):
@@ -110,6 +123,10 @@ def try_match(scheme_list, lines):
             return temp, scheme["lang"]
     return None, None
 
+# ================= 主处理 =================
+unmatched = []
+duplicates = []
+
 for root, _, files in os.walk(folder_path):
     for file in files:
         if not file.lower().endswith(".pdf"):
@@ -127,14 +144,18 @@ for root, _, files in os.walk(folder_path):
 
             lines = [l.strip() for l in text.split("\n") if l.strip()]
 
-            # ===== ① 先跑中文 =====
-            cn_schemes = [s for s in schemes if s["lang"] == "中"]
-            result, lang = try_match(cn_schemes, lines)
+            # ===== ① 最高优先：委托方/Applicant 整组 =====
+            result, lang = try_special_group(lines)
 
-            # ===== ② 再跑英文 =====
+            # ===== ② 普通中文 =====
+            if not result:
+                cn_schemes = [s for s in schemes if s["lang"] == "中"]
+                result, lang = try_normal_group(cn_schemes, lines)
+
+            # ===== ③ 英文兜底 =====
             if not result:
                 en_schemes = [s for s in schemes if s["lang"] == "英"]
-                result, lang = try_match(en_schemes, lines)
+                result, lang = try_normal_group(en_schemes, lines)
 
             if not result:
                 unmatched.append(pdf_path)
@@ -168,7 +189,7 @@ for root, _, files in os.walk(folder_path):
             unmatched.append(pdf_path)
             print(f"[异常] {pdf_path} → {e}")
 
-# ================= 输出结果 =================
+# ================= 输出 =================
 if unmatched:
     with open(unmatched_file, "w", encoding="utf-8") as f:
         f.write("\n".join(unmatched))
