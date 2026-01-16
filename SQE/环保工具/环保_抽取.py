@@ -25,15 +25,15 @@ schemes = [
     {"lang": "中", "fields": {"client": ["委托单位"], "sample": ["Sample Name 样品名称"], "date": ["Received Date 接收日期"]}},
     {"lang": "中", "fields": {"client": ["申请商"], "sample": ["产品名称 ProductName"], "date": ["样 品 接 收 日 期"]}},
     # 英文放后面
-    {"lang": "英", "fields": {"client": ["Company Name shown on Report", "Company Name"],
-                              "sample": ["Sample Name"], "date": ["Sample Received Date"]}},
-    {"lang": "英",
-     "fields": {"client": ["Sample Submitted By"], "sample": ["Sample Name"], "date": ["Sample Receiving Date"]}},
-    {"lang": "英", "fields": {"client": ["Client Name"], "sample": ["Sample Name"], "date": ["Sample Receiving Date"]}}
+    {"lang": "英", "fields": {"client": ["Company Name shown on Report", "Company Name"],"sample": ["Sample Name"], "date": ["Sample Received Date"]}},
+    {"lang": "英","fields": {"client": ["Sample Submitted By"], "sample": ["Sample Name"], "date": ["Sample Receiving Date"]}},
+    {"lang": "英","fields": {"client": ["Sample Submitted By"], "sample": ["Sample Name"], "date": ["Sample Receiving Date"]}},
+    {"lang": "英", "fields": {"client": ["Applicant"], "sample": ["SampleName"], "date": ["SampleReceivedDate"]}}
 ]
 
 # ================= 全局配置 =================
-folder_path = r"E:\System\download\失效pdf\AAAA"  # 可修改
+# folder_path = r"E:\System\download\失效pdf\AAAA"  # 可修改
+folder_path = r"E:\System\download\失效pdf"  # 可修改
 failed_file = os.path.join(folder_path, "处理失败文件.txt")
 duplicate_file = os.path.join(folder_path, "重复文件.txt")
 
