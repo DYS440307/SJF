@@ -13,12 +13,18 @@ def clean_filename(text):
     return re.sub(r'[\\/:*?"<>|]', '', text).strip()
 
 def normalize(text):
-    return text.replace(":", "").replace("：", "").replace(" ", "")
+    # 去除所有空白字符（空格、tab、全角空格等）并去掉冒号
+    return re.sub(r'[\s\u3000]+', '', text).replace(":", "").replace("：", "").lower()
 
 def parse_date(date_str):
-    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d", "%Y年%m月%d日"):
+    # ★ 修复：支持英文月份
+    for fmt in (
+        "%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d", "%Y年%m月%d日",
+        "%b %d, %Y",     # Jun 26, 2024
+        "%B %d, %Y"      # July 02, 2024
+    ):
         try:
-            return datetime.strptime(date_str, fmt)
+            return datetime.strptime(date_str.strip(), fmt)
         except:
             pass
     return None
@@ -34,29 +40,19 @@ def generate_unique_path(base_path):
             return new_path, True
         i += 1
 
-def contains_any_chinese_key(lines, schemes):
-    for scheme in schemes:
-        if scheme["lang"] != "中":
-            continue
-        for keys in scheme["fields"].values():
-            for key in keys:
-                for line in lines:
-                    if normalize(key) in normalize(line):
-                        return True
-    return False
-
 # ================= 特殊整组（最高优先） =================
 SPECIAL_GROUP = {
     "lang": "中",
     "patterns": {
         "client": r"委托方\s*/\s*Applicant.*?[:：]\s*(.+)",
         "sample": r"样品名称\s*/\s*Sample\s*Name.*?[:：]\s*(.+)",
-        "date": r"样品接收日期\s*/\s*Date\s*of\s*Receipt\s*sample.*?[:：]\s*(\d{4}[-/.]\d{2}[-/.]\d{2})"
+        "date": r"样品接收日期\s*/\s*Date\s*of\s*Receipt\s*sample.*?[:：]\s*(.+)"
     }
 }
 
 # ================= 成组方案（强绑定） =================
 schemes = [
+    # 中文方案1
     {
         "lang": "中",
         "fields": {
@@ -65,6 +61,7 @@ schemes = [
             "date": ["样品接收时间"]
         }
     },
+    # 中文方案2
     {
         "lang": "中",
         "fields": {
@@ -73,6 +70,7 @@ schemes = [
             "date": ["样品接收日期"]
         }
     },
+    # 中文方案3
     {
         "lang": "中",
         "fields": {
@@ -81,6 +79,7 @@ schemes = [
             "date": ["样品接收日期"]
         }
     },
+    # 英文方案
     {
         "lang": "英",
         "fields": {
@@ -105,18 +104,27 @@ def try_special_group(lines):
 def try_normal_group(scheme_list, lines):
     for scheme in scheme_list:
         temp = {}
-        for i, line in enumerate(lines):
+        i = 0
+        while i < len(lines):
+            line = lines[i]
             line_n = normalize(line)
             for field, keys in scheme["fields"].items():
                 if field in temp:
                     continue
                 for key in keys:
-                    if normalize(key) in line_n:
-                        m = re.search(rf"{re.escape(key)}[:：]?\s*(.+)", line)
+                    key_n = normalize(key)
+                    if key_n in line_n:
+                        # ★ 修复：允许 key 后只有空格，没有冒号
+                        m = re.search(
+                            rf"{re.escape(key)}\s*[:：]?\s*(.+)",
+                            line,
+                            re.I
+                        )
                         if m and m.group(1).strip():
                             temp[field] = m.group(1).strip()
                         elif i + 1 < len(lines):
                             temp[field] = lines[i + 1].strip()
+            i += 1
         if len(temp) == 3:
             return temp, scheme["lang"]
     return None, None
@@ -140,7 +148,6 @@ for root, _, files in os.walk(folder_path):
                 continue
 
             lines = [l.strip() for l in text.split("\n") if l.strip()]
-            has_cn = contains_any_chinese_key(lines, schemes)
 
             # ① 特殊整组
             result, lang = try_special_group(lines)
@@ -150,8 +157,8 @@ for root, _, files in os.walk(folder_path):
                 cn_schemes = [s for s in schemes if s["lang"] == "中"]
                 result, lang = try_normal_group(cn_schemes, lines)
 
-            # ③ 英文兜底（仅当完全无中文）
-            if not result and not has_cn:
+            # ③ 英文组兜底
+            if not result:
                 en_schemes = [s for s in schemes if s["lang"] == "英"]
                 result, lang = try_normal_group(en_schemes, lines)
 
@@ -166,7 +173,6 @@ for root, _, files in os.walk(folder_path):
 
             expire = dt + timedelta(days=365)
 
-            # ===== 生成基础文件名 =====
             new_name = (
                 f"{clean_filename(result['client'])}_"
                 f"{clean_filename(result['sample'])}_"
@@ -174,27 +180,27 @@ for root, _, files in os.walk(folder_path):
                 f"过期时间({expire.strftime('%Y-%m-%d')})"
             )
 
-            # ===== 中文组额外拼接 RoHs / REACH(SVHC) =====
+            # ★ 修复：REACH / SVHC 统一拼 REACH
             if lang == "中":
                 keywords = []
                 for line in lines:
                     l_lower = line.lower()
-                    # 识别 RoHs
-                    if 'rohs' in l_lower and 'RoHs' not in keywords:
-                        keywords.append('RoHs')
-                    # 识别 REACH 或 SVHC
-                    if ('reach' in l_lower or 'svhc' in l_lower) and 'REACH(SVHC)' not in keywords:
-                        keywords.append('REACH(SVHC)')
+                    if 'rohs' in l_lower and 'RoHS' not in keywords:
+                        keywords.append('RoHS')
+                    if 'reach' in l_lower or 'svhc' in l_lower:
+                        if 'REACH' not in keywords:
+                            keywords.append('REACH')
                 if keywords:
                     new_name += '_' + '_'.join(keywords)
 
             new_name += ".pdf"
 
-            # ===== 处理重复 =====
             final_path, is_dup = generate_unique_path(os.path.join(root, new_name))
             os.rename(pdf_path, final_path)
+
+            # ★ 修复：重复文件记录语义
             if is_dup:
-                duplicates.append(final_path)
+                duplicates.append(f"{pdf_path} -> {final_path}")
 
             print(f"[完成] {final_path}")
 
