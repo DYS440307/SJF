@@ -6,14 +6,15 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import multiprocessing
 from tqdm import tqdm
 import threading
+from dateutil import parser
 
 # ================= 字段匹配规则 =================
 schemes = [
-    # 中文优先
-    {"lang": "中", "fields": {"client": ["Applicant", "申请人公司名称"],
-                              "sample": ["Sample Description", "样品描述", "Sample(s) received is(are) stated to be",
+    {"lang": "中", "fields": {"client": ["申请商", "Applicant", "申请人公司名称"],
+                              "sample": ["产品名称", "Sample Description", "样品描述",
+                                         "Sample(s) received is(are) stated to be",
                                          "收到的送测样品为"],
-                              "date": ["Date of Submission", "样品收取日期"]}},
+                              "date": ["样 品 接 收 日 期", "Date of Submission", "样品收取日期"]}},
     {"lang": "中", "fields": {"client": ["客户名称"], "sample": ["样品名称"], "date": ["样品接收时间"]}},
     {"lang": "中", "fields": {"client": ["客户名称"], "sample": ["样品名称"], "date": ["收样日期"]}},
     {"lang": "中", "fields": {"client": ["委托方"], "sample": ["样品名称"], "date": ["样品接收日期"]}},
@@ -24,17 +25,16 @@ schemes = [
     {"lang": "中", "fields": {"client": ["申请单位"], "sample": ["样品名称"], "date": ["送样日期"]}},
     {"lang": "中", "fields": {"client": ["委托单位"], "sample": ["Sample Name 样品名称"], "date": ["Received Date 接收日期"]}},
     {"lang": "中", "fields": {"client": ["申请商"], "sample": ["产品名称 ProductName"], "date": ["样 品 接 收 日 期"]}},
-    # 英文放后面
-    {"lang": "英", "fields": {"client": ["Company Name shown on Report", "Company Name"],"sample": ["Sample Name"], "date": ["Sample Received Date"]}},
-    {"lang": "英","fields": {"client": ["Sample Submitted By"], "sample": ["Sample Name"], "date": ["Sample Receiving Date"]}},
-    {"lang": "英","fields": {"client": ["Customer"], "sample": ["SampleName"], "date": ["SampleReceivedDate"]}},
-    {"lang": "英","fields": {"client": ["ClientName"], "sample": ["SampleName"], "date": ["DateofSampleReceived"]}},
+    {"lang": "英", "fields": {"client": ["Company Name shown on Report", "Company Name"], "sample": ["Sample Name"],
+                              "date": ["Sample Received Date"]}},
+    {"lang": "英", "fields": {"client": ["Sample Submitted By"], "sample": ["Sample Name"], "date": ["Sample Receiving Date"]}},
+    {"lang": "英", "fields": {"client": ["Customer"], "sample": ["SampleName"], "date": ["SampleReceivedDate"]}},
+    {"lang": "英", "fields": {"client": ["ClientName"], "sample": ["SampleName"], "date": ["DateofSampleReceived"]}},
     {"lang": "英", "fields": {"client": ["Applicant"], "sample": ["SampleName"], "date": ["SampleReceivedDate"]}}
 ]
 
 # ================= 全局配置 =================
-folder_path = r"E:\System\download\失效pdf\AAAA"  # 可修改
-# folder_path = r"E:\System\download\失效pdf"  # 可修改
+folder_path = r"E:\System\download\失效pdf\AAAA"
 failed_file = os.path.join(folder_path, "处理失败文件.txt")
 duplicate_file = os.path.join(folder_path, "重复文件.txt")
 
@@ -43,27 +43,23 @@ name_lock = threading.Lock()
 process_results = []
 
 # ================= 工具函数 =================
-def clean_company_name(text):
-    """清洗公司名称：优先保留完整英文，有中文则保留中文"""
-    if not text:
-        return ""
-    english_pattern = re.compile(r'^[A-Za-z0-9\s,.&()-]+$')
-    if english_pattern.match(text.strip()):
-        return text.strip()
-    chinese_pattern = re.compile(r'[\u4e00-\u9fff]+')
-    chinese_parts = chinese_pattern.findall(text)
-    if chinese_parts:
-        return max(chinese_parts, key=len).strip()
+def clean_company_name(text, pdf_filename=""):
+    if text.strip():
+        english_pattern = re.compile(r'^[A-Za-z0-9\s,.&()-]+$')
+        if english_pattern.match(text.strip()):
+            return text.strip()
+        chinese_pattern = re.compile(r'[\u4e00-\u9fff]+')
+        chinese_parts = chinese_pattern.findall(text)
+        if chinese_parts:
+            return max(chinese_parts, key=len).strip()
+    if "馨固" in pdf_filename:
+        return "东莞市馨固电子有限公司"
     return text.strip()
 
-
 def clean_sample_name(text):
-    """清洗样品名称：剔除冗余前缀和关键字"""
     if not text:
         return ""
-    # 去掉前缀 SampleName 或 样品名称
-    text = re.sub(r'^(SampleName|样品名称)\s*', '', text, flags=re.I)
-    # 原有冗余关键字处理
+    text = re.sub(r'^(SampleName|样品名称|产品名称)\s*', '', text, flags=re.I)
     redundant_keywords = [
         "Manufacturer制造商", "Buyer买家", "Style No(s)", "款号",
         "PO No.", "采购订单号", "订单号", "型号", "规格",
@@ -74,11 +70,12 @@ def clean_sample_name(text):
             text = text.split(keyword)[0].strip()
     text = re.sub(r'\s+', ' ', text)
     text = re.sub(r'[^\u4e00-\u9fff\w\s]', '', text)
+    glue_pattern = re.compile(r'胶水|不干胶|米白色胶水', re.I)
+    if glue_pattern.search(text):
+        return "胶水"
     return text.strip()
 
-
 def clean_filename(text):
-    """清理文件名非法字符"""
     if not text:
         return ""
     illegal_chars = r'[\\/:*?"<>|]'
@@ -87,9 +84,7 @@ def clean_filename(text):
     text = re.sub(r'_+', '_', text)
     return text
 
-
 def clean_value(val):
-    """清理字段值"""
     if not val:
         return ""
     val = val.strip()
@@ -97,7 +92,6 @@ def clean_value(val):
     val = re.sub(r'(样品名称|Sample Name|Paper body|Company Name)?\s*[.．-]{2,}\s*', '', val, flags=re.I)
     val = val.strip().strip(".").strip("-").strip()
     return val
-
 
 def normalize(text):
     if not text:
@@ -107,65 +101,34 @@ def normalize(text):
     text = text.lower()
     return text
 
-
+# ================= 日期解析 =================
 def parse_date(date_str):
     if not date_str:
         return None
     date_str = date_str.strip()
-    date_patterns = [
-        r'([A-Za-z]{3,9}\.?\s\d{1,2},\s\d{4})',
-        r'(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})',
-        r'(\d{4}[-/]\d{1,2}[-/]\d{1,2})',
-        r'(\d{4})年(\d{1,2})月(\d{1,2})日?'
-    ]
-    for pattern in date_patterns:
-        m = re.search(pattern, date_str)
-        if m:
-            date_candidate = m.group(0)
-            break
-    else:
-        date_candidate = date_str
 
-    english_formats = [
-        "%b. %d, %Y", "%b %d, %Y", "%B %d, %Y",
-        "%d-%b-%Y", "%d-%B-%Y",
-        "%b-%d-%Y", "%B-%d-%Y",
-        "%d %b %Y", "%d %B %Y",
-        "%b %d %Y", "%B %d %Y"
-    ]
-    for fmt in english_formats:
-        try:
-            return datetime.strptime(date_candidate, fmt)
-        except:
-            continue
-    m = re.match(r'(\d{4})年(\d{1,2})月(\d{1,2})日?', date_candidate)
-    if m:
-        year, month, day = map(int, m.groups())
-        return datetime(year, month, day)
-    numeric_formats = [
-        "%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d",
-        "%d-%m-%Y", "%d/%m/%Y", "%d.%m.%Y",
-        "%y-%m-%d", "%d-%m-%y"
-    ]
-    for fmt in numeric_formats:
-        try:
-            dt = datetime.strptime(date_candidate, fmt)
-            if fmt in ["%y-%m-%d", "%d-%m-%y"]:
-                dt = dt.replace(year=dt.year + 2000 if dt.year < 100 else dt.year)
-            return dt
-        except:
-            continue
-    return None
+    # 中文全角符号替换
+    date_str_ch = date_str.replace("　", "").replace("年", "-").replace("月", "-").replace("日", "")
+    try:
+        return parser.parse(date_str_ch, dayfirst=False, fuzzy=True)
+    except:
+        pass
 
+    # 英文日期，自动加空格修复 Dec02 -> Dec 02
+    date_str_en = re.sub(r'([A-Za-z]{3,9})(\d{1,2})', r'\1 \2', date_str)
+    try:
+        return parser.parse(date_str_en, fuzzy=True)
+    except:
+        return None
 
+# ================= PDF验证 =================
 def is_pdf_valid(pdf_path):
     try:
         with pdfplumber.open(pdf_path) as pdf:
             pdf.pages[0].extract_text()
         return True
-    except Exception:
+    except:
         return False
-
 
 def looks_like_date(text):
     if not text:
@@ -175,7 +138,6 @@ def looks_like_date(text):
     if any(b in t for b in blacklist):
         return False
     return bool(re.search(r"\d{4}|\d{1,2}[-/.]\d{1,2}", t))
-
 
 def extract_field_value(lines, key, field_name=None):
     key_n = normalize(key)
@@ -199,11 +161,13 @@ def extract_field_value(lines, key, field_name=None):
             if field_name == "client":
                 val = re.sub(r'(Company Name|Client Name|委托方|委托单位|Applicant)', '', val, flags=re.I)
             elif field_name == "sample":
-                val = re.sub(r'(Sample Name|样品名称|样品描述)', '', val, flags=re.I)
+                val = re.sub(r'(Sample Name|样品名称|样品描述|产品名称)', '', val, flags=re.I)
+            if field_name == "date":
+                return val.strip()
             return clean_value(val)
     return ""
 
-
+# ================= 匹配规则 =================
 def try_match_scheme(lines, scheme):
     temp = {}
     for field, keys in scheme["fields"].items():
@@ -214,7 +178,6 @@ def try_match_scheme(lines, scheme):
                 break
     return temp if len(temp) == 3 else None
 
-
 def try_match_all_schemes(lines):
     for scheme in schemes:
         result = try_match_scheme(lines, scheme)
@@ -222,7 +185,7 @@ def try_match_all_schemes(lines):
             return result, scheme["lang"]
     return None, None
 
-
+# ================= 文件重命名 =================
 def safe_rename(src, target):
     base, ext = os.path.splitext(target)
     if not os.path.exists(target):
@@ -236,10 +199,11 @@ def safe_rename(src, target):
             return new_target, True
         i += 1
 
-
+# ================= PDF处理 =================
 def process_single_pdf(pdf_path):
+    pdf_filename = os.path.basename(pdf_path)
     with name_lock:
-        print(f"\n===== 开始处理文件：{os.path.basename(pdf_path)} =====", flush=True)
+        print(f"\n===== 开始处理文件：{pdf_filename} =====", flush=True)
 
     if 'msds' in pdf_path.lower():
         with name_lock:
@@ -261,7 +225,6 @@ def process_single_pdf(pdf_path):
 
         result, lang = try_match_all_schemes(first_lines)
 
-        # 无论是否匹配成功，都打印
         client_val = result['client'] if result and 'client' in result else "未读取"
         sample_val = result['sample'] if result and 'sample' in result else "未读取"
         date_val = result['date'] if result and 'date' in result else "未读取"
@@ -276,7 +239,7 @@ def process_single_pdf(pdf_path):
             return (pdf_path, "", "失败", f"日期解析失败：{result['date']}")
         expire = dt + timedelta(days=365)
 
-        client_clean = clean_company_name(result['client'])
+        client_clean = clean_company_name(result['client'], pdf_filename)
         sample_clean = clean_sample_name(result['sample'])
         client_final = clean_filename(client_clean)
         sample_final = clean_filename(sample_clean)
@@ -320,10 +283,10 @@ def process_single_pdf(pdf_path):
     except Exception as e:
         with name_lock:
             print(f"提取结果 -> client: 未读取, sample: 未读取, date: 未读取", flush=True)
+            print(f"异常详情：{str(e)}", flush=True)
         return (pdf_path, "", "失败", f"处理异常：{str(e)}")
 
-
-
+# ================= 主函数 =================
 def main():
     pdf_paths = [os.path.join(root, f) for root, _, files in os.walk(folder_path)
                  for f in files if f.lower().endswith(".pdf")]
@@ -363,7 +326,6 @@ def main():
     if duplicates:
         print(f"重复文件清单：{duplicate_file}")
     print("=================================")
-
 
 if __name__ == "__main__":
     main()
