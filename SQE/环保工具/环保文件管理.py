@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from dateutil.parser import parse  # 兼容多语言/多格式日期解析
 
 # -------------------------- 全局配置项 --------------------------
-TARGET_DIR = r'E:\System\download\厂商ROHS、REACH - 副本\2-强升'
+TARGET_DIR = r'E:\System\download\厂商ROHS、REACH - 副本\2-强升\ROHS'
 target_keys = {
     "客户名称": [
         r"报告抬头公司名称\s*([^\n]+)",  # 新模板核心（优先匹配）
@@ -25,6 +25,7 @@ target_keys = {
     ]
 }
 expire_days = 365
+# 检测关键词：任意匹配、无顺序、遍历全页
 target_keywords = ["rohs", "reach", "pops", "svhc"]
 
 
@@ -36,18 +37,11 @@ def filter_invalid_filename_chars(filename):
     return filename.strip()
 
 
-# 新增：清洗字段中的多余符号（冒号、多余空格）
 def clean_field_content(content):
-    """
-    清洗提取的字段内容：去掉中英文冒号、前后空白、多余空格
-    :param content: 原始提取的字段内容
-    :return: 清洗后的干净内容
-    """
+    """清洗提取的字段内容：去掉中英文冒号、前后空白、多余空格"""
     if content == "未找到对应内容":
         return content
-    # 步骤1：去掉中英文冒号
     content = content.replace("：", "").replace(":", "")
-    # 步骤2：去掉前后空白，中间多个空格合并为一个
     content = re.sub(r'\s+', ' ', content).strip()
     return content
 
@@ -73,24 +67,25 @@ def get_unique_filename(file_dir, base_filename):
     return unique_path
 
 
-# -------------------------- 核心提取函数 --------------------------
+# -------------------------- 核心提取函数（关键修改） --------------------------
 def pdfplumber_extract_multi_page(pdf_path, target_keys, target_keywords):
     extract_result = {key: "未找到对应内容" for key in target_keys}
     extract_result["检测类型"] = ""
-    found_page = None
+    # 新增：收集所有匹配的检测关键词（去重）
+    matched_keywords = set()
 
     try:
         with pdfplumber.open(pdf_path) as pdf:
+            # 强制遍历PDF所有页面（取消“找到基础信息就终止”的逻辑）
             for page_num, page in enumerate(pdf.pages, start=1):
                 page_text = page.extract_text()
                 if not page_text:
                     continue
 
-                # 【调试】打印第1页的原始文本
-                if page_num == 1:
-                    print(f"📝 第{page_num}页原始文本：\n{page_text}\n")
+                # 【调试】打印每页原始文本（可选，可注释）
+                # print(f"📝 第{page_num}页原始文本：\n{page_text}\n")
 
-                # 提取核心信息
+                # 1. 提取基础信息（客户/样品/时间）：匹配到后不再重复提取
                 for key, patterns in target_keys.items():
                     if extract_result[key] == "未找到对应内容":
                         for pattern in patterns:
@@ -99,21 +94,28 @@ def pdfplumber_extract_multi_page(pdf_path, target_keys, target_keywords):
                                 extract_result[key] = match.group(1).strip()
                                 break
 
-                # 查找检测类型关键字
-                if not extract_result["检测类型"]:
-                    page_text_lower = page_text.lower()
-                    for keyword in target_keywords:
-                        if keyword in page_text_lower:
-                            extract_result["检测类型"] = keyword.upper()
-                            break
+                # 2. 提取检测类型：遍历全页+收集所有匹配的关键词（无顺序、去重）
+                page_text_lower = page_text.lower()
+                for keyword in target_keywords:
+                    if keyword in page_text_lower:
+                        matched_keywords.add(keyword.upper())  # 转大写并存入集合（自动去重）
 
-                # 基础信息全找到就终止遍历
-                if all(v != "未找到对应内容" for v in
-                       [extract_result["客户名称"], extract_result["样品名称"], extract_result["样品接收时间"]]):
-                    found_page = page_num
-                    break
+        # 处理检测类型：将集合转为斜杠分隔的字符串（无顺序）
+        if matched_keywords:
+            # 按字母排序（可选，也可以直接用sorted(matched_keywords)调整显示顺序）
+            extract_result["检测类型"] = "/".join(matched_keywords)
+        else:
+            extract_result["检测类型"] = ""
 
+        # 记录找到基础信息的页码（仅用于日志，不影响逻辑）
+        found_page = None
+        for page_num, page in enumerate(pdf.pages, start=1):
+            if all(v != "未找到对应内容" for v in
+                   [extract_result["客户名称"], extract_result["样品名称"], extract_result["样品接收时间"]]):
+                found_page = page_num
+                break
         extract_result["找到内容的页码"] = found_page if found_page else "所有页均未找到"
+
     except Exception as e:
         extract_result = {"error": f"提取失败：{str(e)}"}
 
@@ -127,7 +129,7 @@ def rename_single_pdf(original_path):
     # 1. 提取PDF内容
     extract_result = pdfplumber_extract_multi_page(original_path, target_keys, target_keywords)
 
-    # 打印提取结果
+    # 打印提取结果（清洗前）
     print("提取结果（清洗前）：")
     for key, value in extract_result.items():
         print(f"  {key}：{value}")
@@ -137,7 +139,7 @@ def rename_single_pdf(original_path):
         print(f"❌ 提取失败，跳过重命名：{extract_result['error']}")
         return False
 
-    # 3. 提取核心信息 + 清洗字段（关键修改）
+    # 3. 提取核心信息 + 清洗字段
     customer_name = clean_field_content(extract_result["客户名称"])
     sample_name = clean_field_content(extract_result["样品名称"])
     receive_date = clean_field_content(extract_result["样品接收时间"])
@@ -161,9 +163,9 @@ def rename_single_pdf(original_path):
         print(f"❌ 过期时间计算失败，跳过重命名")
         return False
 
-    # 6. 拼接基础新文件名（清洗后无多余冒号）
+    # 6. 拼接基础新文件名
     filename_parts = [customer_name, sample_name, receive_date, f"过期时间({expire_date})"]
-    if detect_type:
+    if detect_type:  # 有检测类型才拼接
         filename_parts.append(detect_type)
     base_filename = "_".join(filename_parts) + ".pdf"
     base_filename = filter_invalid_filename_chars(base_filename)
