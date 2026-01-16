@@ -25,7 +25,7 @@ target_keys = {
 # 过期时间偏移量（365天）
 expire_days = 365
 # 要查找的关键字（大小写不敏感）
-target_keywords = ["rohs", "reach", "svhc"]
+target_keywords = ["rohs", "reach", "pops"]
 
 
 # -------------------------- 工具函数 --------------------------
@@ -51,22 +51,23 @@ def calculate_expire_date(receive_date_str, days=365):
         return "日期解析失败"
 
 
-def get_unique_filename(base_path, base_filename):
+def get_unique_filename(file_dir, base_filename):
     """
-    生成不重复的文件名：若重名则拼接「_重名+序号」
-    :param base_path: 文件所在目录
+    生成不重复的文件名：仅判断【当前文件所在文件夹】内的重名
+    :param file_dir: 待重命名文件的【所在文件夹路径】（核心：仅在该目录内判断重名）
     :param base_filename: 基础文件名（如"XXX.pdf"）
-    :return: 不重复的完整文件路径
+    :return: 不重复的完整文件路径（仅在同文件夹重名时拼接序号）
     """
-    # 拆分文件名和后缀
+    # 拆分文件名和后缀（如"XXX.pdf" → "XXX" + ".pdf"）
     filename_no_ext, ext = os.path.splitext(base_filename)
-    unique_path = os.path.join(base_path, base_filename)
+    # 拼接当前文件夹下的完整路径（仅判断该文件夹内的文件）
+    unique_path = os.path.join(file_dir, base_filename)
     duplicate_num = 1
 
-    # 若文件已存在，循环生成带「重名+序号」的文件名
+    # 仅在【当前文件夹】内循环检查重名，不同文件夹同名不触发序号
     while os.path.exists(unique_path):
         new_filename = f"{filename_no_ext}_重名{duplicate_num}{ext}"
-        unique_path = os.path.join(base_path, new_filename)
+        unique_path = os.path.join(file_dir, new_filename)
         duplicate_num += 1
 
     return unique_path
@@ -118,7 +119,7 @@ def pdfplumber_extract_multi_page(pdf_path, target_keys, target_keywords):
 
 # -------------------------- 单文件重命名函数 --------------------------
 def rename_single_pdf(original_path):
-    """处理单个PDF文件的重命名（兼容中英文模板，重名自动拼接「重名+序号」）"""
+    """处理单个PDF文件的重命名（兼容中英文模板，仅同文件夹重名才拼接序号）"""
     print(f"\n========== 开始处理文件：{original_path} ==========")
 
     # 1. 提取PDF内容
@@ -158,10 +159,10 @@ def rename_single_pdf(original_path):
     base_filename = "_".join(filename_parts) + ".pdf"
     base_filename = filter_invalid_filename_chars(base_filename)
 
-    # 7. 拼接文件所在目录
+    # 7. 获取当前文件的【所在文件夹路径】（核心：仅用该目录判断重名）
     original_dir = os.path.dirname(original_path)
 
-    # 8. 生成不重复的文件名（重名则拼接「_重名+序号」）
+    # 8. 生成不重复的文件名（仅同文件夹重名时拼接「_重名+序号」）
     new_pdf_path = get_unique_filename(original_dir, base_filename)
 
     # 9. 执行重命名
