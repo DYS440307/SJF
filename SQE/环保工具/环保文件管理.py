@@ -6,7 +6,7 @@ from dateutil.parser import parse  # 兼容多语言/多格式日期解析
 
 # -------------------------- 全局配置项 --------------------------
 # 目标处理目录
-TARGET_DIR = r'E:\System\download\厂商ROHS、REACH - 副本\1-诚意达\REACH'
+TARGET_DIR = r'E:\System\download\厂商ROHS、REACH - 副本\1-诚意达\ROHS'
 # 目标提取项：支持中英文两套关键词（正则匹配大小写不敏感）
 target_keys = {
     "客户名称": [
@@ -40,18 +40,36 @@ def filter_invalid_filename_chars(filename):
 def calculate_expire_date(receive_date_str, days=365):
     """
     兼容中英文日期解析，过期时间统一输出为【XXXX年XX月XX日】格式
-    支持：2025年05月13日、Jun 21, 2024、2025.5.13等格式 → 统一转中文日期
     """
     try:
-        # 用dateutil自动识别所有格式的日期（兼容中英文）
         receive_date = parse(receive_date_str, fuzzy=True)
-        # 计算过期时间
         expire_date = receive_date + timedelta(days=days)
-        # 统一输出为【XXXX年XX月XX日】格式（核心修改点）
+        # 统一输出为【XXXX年XX月XX日】格式
         return expire_date.strftime("%Y年%m月%d日")
     except Exception as e:
         print(f"⚠️ 日期解析失败：{receive_date_str}，错误：{e}")
         return "日期解析失败"
+
+
+def get_unique_filename(base_path, base_filename):
+    """
+    生成不重复的文件名：若重名则拼接「_重名+序号」
+    :param base_path: 文件所在目录
+    :param base_filename: 基础文件名（如"XXX.pdf"）
+    :return: 不重复的完整文件路径
+    """
+    # 拆分文件名和后缀
+    filename_no_ext, ext = os.path.splitext(base_filename)
+    unique_path = os.path.join(base_path, base_filename)
+    duplicate_num = 1
+
+    # 若文件已存在，循环生成带「重名+序号」的文件名
+    while os.path.exists(unique_path):
+        new_filename = f"{filename_no_ext}_重名{duplicate_num}{ext}"
+        unique_path = os.path.join(base_path, new_filename)
+        duplicate_num += 1
+
+    return unique_path
 
 
 # -------------------------- 核心提取函数 --------------------------
@@ -100,7 +118,7 @@ def pdfplumber_extract_multi_page(pdf_path, target_keys, target_keywords):
 
 # -------------------------- 单文件重命名函数 --------------------------
 def rename_single_pdf(original_path):
-    """处理单个PDF文件的重命名（兼容中英文模板，过期时间统一中文格式）"""
+    """处理单个PDF文件的重命名（兼容中英文模板，重名自动拼接「重名+序号」）"""
     print(f"\n========== 开始处理文件：{original_path} ==========")
 
     # 1. 提取PDF内容
@@ -133,21 +151,18 @@ def rename_single_pdf(original_path):
         print(f"❌ 过期时间计算失败，跳过重命名")
         return False
 
-    # 6. 拼接新文件名
+    # 6. 拼接基础新文件名
     filename_parts = [customer_name, sample_name, receive_date, f"过期时间({expire_date})"]
     if detect_type:
         filename_parts.append(detect_type)
-    new_filename = "_".join(filename_parts) + ".pdf"
-    new_filename = filter_invalid_filename_chars(new_filename)
+    base_filename = "_".join(filename_parts) + ".pdf"
+    base_filename = filter_invalid_filename_chars(base_filename)
 
-    # 7. 拼接新文件路径
+    # 7. 拼接文件所在目录
     original_dir = os.path.dirname(original_path)
-    new_pdf_path = os.path.join(original_dir, new_filename)
 
-    # 8. 避免覆盖已存在的文件
-    if os.path.exists(new_pdf_path):
-        print(f"❌ 新文件名已存在，跳过重命名：{new_pdf_path}")
-        return False
+    # 8. 生成不重复的文件名（重名则拼接「_重名+序号」）
+    new_pdf_path = get_unique_filename(original_dir, base_filename)
 
     # 9. 执行重命名
     try:
