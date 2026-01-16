@@ -4,10 +4,9 @@ import os
 from datetime import datetime, timedelta
 
 # ================= 配置 =================
-folder_path = r"E:\System\download\卤素"
+folder_path = r"E:\System\download\厂商ROHS、REACH\17-盛强\ROHS"
 unmatched_file = os.path.join(folder_path, "未匹配文件.txt")
 duplicate_file = os.path.join(folder_path, "重复文件.txt")
-
 
 # ================= 工具函数 =================
 def clean_filename(text):
@@ -19,27 +18,44 @@ def clean_filename(text):
     text = re.sub(r'_+', '_', text)
     return text
 
-
 def clean_value(val):
     """清理PDF提取字段的前缀，例如 ') : ' 或 ': '"""
     if not val:
         return ""
     val = val.strip()
-    val = re.sub(r'^[\)\s]*[:：]?\s*', '', val)  # 去掉前导 ') :' 或 ':'
+    val = re.sub(r'^[\)\s]*[:：]?\s*', '', val)
     return val.strip()
-
 
 def normalize(text):
     """文本归一化：去除空格、统一符号、转小写"""
     return re.sub(r'[\s\u3000]+', '', text).replace(":", "").replace("：", "").lower()
 
-
 def parse_date(date_str):
-    """增强版日期解析"""
+    """增强版日期解析，支持中文、英文、数字日期"""
     if not date_str:
         return None
-    date_str = re.sub(r'[^0-9a-zA-Z\-/.]', '', date_str.strip())
-    date_str = re.sub(r'[/.\s]', '-', date_str)
+    date_str = date_str.strip()
+
+    # ===== 中文日期解析 =====
+    m = re.match(r'(\d{4})年(\d{1,2})月(\d{1,2})日?', date_str)
+    if m:
+        year, month, day = map(int, m.groups())
+        return datetime(year, month, day)
+
+    # 兼容只写年月
+    m = re.match(r'(\d{4})年(\d{1,2})月', date_str)
+    if m:
+        year, month = map(int, m.groups())
+        return datetime(year, month, 1)
+
+    # 兼容只写年份
+    m = re.match(r'(\d{4})年', date_str)
+    if m:
+        year = int(m.group(1))
+        return datetime(year, 1, 1)
+
+    # ===== 英文/数字解析 =====
+    date_str = re.sub(r'[^0-9a-zA-Z\-/.]', '-', date_str)
     date_str = re.sub(r'-+', '-', date_str).strip('-')
 
     formats = [
@@ -61,6 +77,7 @@ def parse_date(date_str):
         except:
             continue
 
+    # 纯数字兜底
     patterns = [
         r'(\d{4})[-/.\s]*(\d{1,2})[-/.\s]*(\d{1,2})',
         r'(\d{1,2})[-/.\s]*(\d{1,2})[-/.\s]*(\d{4})',
@@ -81,12 +98,10 @@ def parse_date(date_str):
                 continue
     return None
 
-
 def extract_chinese(text):
     """提取中文连续串"""
     m = re.search(r'[\u4e00-\u9fff]+', text)
     return m.group(0) if m else text
-
 
 # ================= 成组方案 =================
 schemes = [
@@ -96,8 +111,8 @@ schemes = [
     {"lang": "中", "fields": {"client": ["报告抬头公司名称"], "sample": ["样品名称"], "date": ["样品接收日期"]}},
     {"lang": "英", "fields": {"client": ["Sample Submitted By"], "sample": ["Sample Name"], "date": ["Sample Receiving Date"]}},
     {"lang": "英", "fields": {"client": ["Client Name"], "sample": ["Sample Name"], "date": ["Sample Receiving Date"]}},
+    {"lang": "中", "fields": {"client": ["委托单位"], "sample": ["材 质"], "date": ["接收日期"]}}
 ]
-
 
 # ================= 匹配函数 =================
 def try_match_all_schemes(lines):
@@ -113,13 +128,26 @@ def try_match_all_schemes(lines):
                 for key in keys:
                     key_n = normalize(key)
                     if key_n in line_n:
+                        # 当前行冒号后内容
                         m = re.search(rf"{re.escape(key)}\s*[:：]?\s*(.+)", line, re.I)
+                        val = ""
                         if m and m.group(1).strip():
-                            temp[field] = clean_value(m.group(1).strip())
-                        elif i + 1 < len(lines):
-                            temp[field] = clean_value(lines[i + 1].strip())
-                        if scheme["lang"] == "中" and field in temp:
-                            temp[field] = extract_chinese(temp[field])
+                            val = m.group(1).strip()
+                        else:
+                            # 连续读取接下来的 3 行
+                            next_lines = []
+                            for j in range(1, 4):
+                                if i + j < len(lines):
+                                    next_lines.append(lines[i+j].strip())
+                            val = " ".join(l for l in next_lines if l)
+
+                        val = clean_value(val)
+
+                        # 中文字段仅对 client 提取中文，其余字段保留原样
+                        if scheme["lang"] == "中" and field == "client":
+                            val = extract_chinese(val)
+
+                        temp[field] = val
             i += 1
         if len(temp) == 3:
             return temp, scheme["lang"]
@@ -128,7 +156,6 @@ def try_match_all_schemes(lines):
 
 # ================= 重复文件生成 =================
 processed_names = set()
-
 
 def generate_unique_path(base_path):
     base, ext = os.path.splitext(base_path)
@@ -145,7 +172,6 @@ def generate_unique_path(base_path):
             return new_name, True
         i += 1
 
-
 # ================= 主流程 =================
 success_count = 0
 duplicates_count = 0
@@ -158,8 +184,12 @@ for root, _, files in os.walk(folder_path):
     for file in files:
         if not file.lower().endswith(".pdf"):
             continue
-        pdf_path = os.path.join(root, file)
+        # ===== 跳过 MSDS 文件 =====
+        if 'msds' in file.lower():
+            print(f"[跳过] 文件包含 'MSDS'，忽略处理: {file}")
+            continue
 
+        pdf_path = os.path.join(root, file)
         try:
             with pdfplumber.open(pdf_path) as pdf:
                 first_page_text = pdf.pages[0].extract_text()
@@ -169,7 +199,6 @@ for root, _, files in os.walk(folder_path):
                     failure_count += 1
                     continue
                 first_lines = [l.strip() for l in first_page_text.split("\n") if l.strip()]
-
                 scan_lines = []
                 for idx in range(min(2, len(pdf.pages))):
                     t = pdf.pages[idx].extract_text()
@@ -183,7 +212,7 @@ for root, _, files in os.walk(folder_path):
                 failure_count += 1
                 continue
 
-            # ===== 调试打印匹配内容 =====
+            # 调试打印
             print("===== 匹配结果 =====")
             for k, v in result.items():
                 print(f"{k!r}: {v!r}")
@@ -197,10 +226,9 @@ for root, _, files in os.walk(folder_path):
 
             expire = dt + timedelta(days=365)
 
-            # ===== 拼接文件名 =====
+            # 拼接文件名
             client_clean = clean_filename(result['client']).rstrip("_ ")
             sample_clean = clean_filename(result['sample']).rstrip("_ ")
-
             parts = [
                 client_clean,
                 sample_clean,
