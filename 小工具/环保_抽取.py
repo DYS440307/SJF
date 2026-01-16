@@ -12,11 +12,11 @@ folder_path = r"E:\System\download\厂商ROHS、REACH\10-西铭\REACH"
 unmatched_file = os.path.join(folder_path, "未匹配文件.txt")
 duplicate_file = os.path.join(folder_path, "重复文件.txt")
 
-# 线程安全锁（解决多线程下重复文件名判断的并发问题）
+# 线程安全锁（解决多线程下重复文件名判断+打印混乱问题）
 name_lock = threading.Lock()
 # 全局已处理文件名集合（多线程共享）
 processed_names = set()
-# 收集处理结果（仅用于统计，不再生成报告）
+# 收集处理结果（仅用于统计）
 process_results = []
 
 
@@ -25,10 +25,8 @@ def clean_company_name(text):
     """清洗公司名称：仅保留中文部分，剔除英文、地址、数字等冗余内容"""
     if not text:
         return ""
-    # 提取所有中文字符（连续的中文公司名）
     chinese_pattern = re.compile(r'[\u4e00-\u9fff]+')
     chinese_parts = chinese_pattern.findall(text)
-    # 取最长的中文片段（通常是完整公司名）
     if chinese_parts:
         return max(chinese_parts, key=len).strip()
     return text.strip()
@@ -38,18 +36,15 @@ def clean_sample_name(text):
     """清洗样品名称：剔除款号、采购订单号、买卖方等冗余内容，保留核心样品名"""
     if not text:
         return ""
-    # 定义需要剔除的冗余关键词（匹配后截断）
     redundant_keywords = [
         "Manufacturer制造商", "Buyer买家", "Style No(s)", "款号",
         "PO No.", "采购订单号", "订单号", "型号", "规格"
     ]
-    # 遍历冗余关键词，遇到则截断文本
     for keyword in redundant_keywords:
         if keyword in text:
             text = text.split(keyword)[0].strip()
-    # 剔除多余空格、特殊符号
-    text = re.sub(r'\s+', ' ', text)  # 多个空格转单个
-    text = re.sub(r'[^\u4e00-\u9fff\w\s]', '', text)  # 保留中文、英文、数字、空格
+    text = re.sub(r'\s+', ' ', text)
+    text = re.sub(r'[^\u4e00-\u9fff\w\s]', '', text)
     return text.strip()
 
 
@@ -57,11 +52,10 @@ def clean_filename(text):
     """清理文件名中的非法字符（最终文件名兜底）"""
     if not text:
         return ""
-    # 剔除Windows文件名非法字符
     illegal_chars = r'[\\/:*?"<>|]'
     text = re.sub(illegal_chars, '', text)
     text = text.strip("_ ").strip()
-    text = re.sub(r'_+', '_', text)  # 多个下划线转单个
+    text = re.sub(r'_+', '_', text)
     return text
 
 
@@ -70,11 +64,8 @@ def clean_value(val):
     if not val:
         return ""
     val = val.strip()
-    # 第一步：移除前缀的符号/空格
     val = re.sub(r'^[\)\s]*[:：]?\s*', '', val)
-    # 第二步：移除键名相关的冗余字符
     val = re.sub(r'(样品名称|Sample Name|Paper body)?\s*[.．-]{2,}\s*', '', val, flags=re.I)
-    # 第三步：移除首尾无关字符
     val = val.strip().strip(".").strip("-").strip()
     return val
 
@@ -249,17 +240,27 @@ def generate_unique_path(base_path):
 
 # ================= 单文件处理函数 =================
 def process_single_pdf(pdf_path):
-    """处理单个PDF（核心优化文件名生成）"""
+    """处理单个PDF（核心调整HF判定逻辑：仅同时检测到F/Cl/Br/I四种才拼接）"""
+    # 加锁避免多线程打印混乱
+    with name_lock:
+        print(f"\n===== 开始处理文件：{os.path.basename(pdf_path)} =====")
+
     if 'msds' in pdf_path.lower():
+        with name_lock:
+            print(f"文件 {os.path.basename(pdf_path)} 包含MSDS，跳过处理")
         return (pdf_path, "", "跳过", "文件包含MSDS，无需处理")
 
     if not is_pdf_valid(pdf_path):
+        with name_lock:
+            print(f"文件 {os.path.basename(pdf_path)} 损坏/加密，无法读取")
         return (pdf_path, "", "失败", "PDF文件损坏/加密/无读取权限")
 
     try:
         with pdfplumber.open(pdf_path) as pdf:
             first_page_text = pdf.pages[0].extract_text()
             if not first_page_text:
+                with name_lock:
+                    print(f"文件 {os.path.basename(pdf_path)} 第一页无文本内容")
                 return (pdf_path, "", "失败", "PDF第一页无文本内容")
 
             first_lines = [l.strip() for l in first_page_text.split("\n") if l.strip()]
@@ -272,44 +273,103 @@ def process_single_pdf(pdf_path):
         # 匹配基础字段
         result, lang = try_match_all_schemes(first_lines)
         if not result:
+            with name_lock:
+                print(f"文件 {os.path.basename(pdf_path)} 未匹配到公司/样品/日期字段")
             return (pdf_path, "", "失败", "字段匹配失败（无可用规则）")
 
         # 解析日期
         dt = parse_date(result["date"])
         if not dt:
+            with name_lock:
+                print(f"文件 {os.path.basename(pdf_path)} 日期解析失败，原始日期：{result['date']}")
             return (pdf_path, "", "失败", f"日期解析失败（原始日期：{result['date']}）")
         expire = dt + timedelta(days=365)
 
-        # 核心：清洗公司名和样品名（只保留关键内容）
+        # 核心：清洗公司名和样品名
         client_raw = result['client']
         sample_raw = result['sample']
-        client_clean = clean_company_name(client_raw)  # 仅保留中文公司名
-        sample_clean = clean_sample_name(sample_raw)  # 剔除款号/订单号等冗余
-        # 最终兜底清洗（防止非法字符）
+        client_clean = clean_company_name(client_raw)
+        sample_clean = clean_sample_name(sample_raw)
         client_final = clean_filename(client_clean)
         sample_final = clean_filename(sample_clean)
 
-        # 关键词识别（去重逻辑保留）
+        with name_lock:
+            print(f"清洗后公司名：{client_final}")
+            print(f"清洗后样品名：{sample_final}")
+            print(f"解析到日期：{dt.strftime('%Y-%m-%d')}，过期时间：{expire.strftime('%Y-%m-%d')}")
+            print("----- 开始检测关键词 -----")
+
+        # 关键词识别（新增打印输出）
         keywords = set()
-        halogen_hits = set()
+        halogen_hits = set()  # 仅存储F/Cl/Br/I四种卤素元素
+        detected_chars = []  # 记录所有检测到的触发字符
+
         for line in scan_lines:
             l = line.lower()
+            # 检测RoHS
             if 'rohs' in l:
+                detected_chars.append(f"rohs（行内容：{line[:50]}...）")  # 截取前50字符避免过长
                 keywords.add('RoHS')
-            if 'reach' in l or 'svhc' in l:
+            # 检测REACH/SVHC
+            if 'reach' in l:
+                detected_chars.append(f"reach（行内容：{line[:50]}...）")
                 keywords.add('REACH')
-            if re.search(r'\bF\b', line, re.I):
+            if 'svhc' in l:
+                detected_chars.append(f"svhc（行内容：{line[:50]}...）")
+                keywords.add('REACH')
+            # 检测卤素元素（仅F/Cl/Br/I）
+            f_match = re.search(r'\bF\b', line, re.I)
+            if f_match:
+                detected_chars.append(f"F（行内容：{line[:50]}...）")
                 halogen_hits.add('F')
-            if re.search(r'\bCl\b', line, re.I):
+            cl_match = re.search(r'\bCl\b', line, re.I)
+            if cl_match:
+                detected_chars.append(f"Cl（行内容：{line[:50]}...）")
                 halogen_hits.add('Cl')
-            if re.search(r'\bBr\b', line, re.I):
+            br_match = re.search(r'\bBr\b', line, re.I)
+            if br_match:
+                detected_chars.append(f"Br（行内容：{line[:50]}...）")
                 halogen_hits.add('Br')
-            if re.search(r'\bI\b', line, re.I):
+            i_match = re.search(r'\bI\b', line, re.I)
+            if i_match:
+                detected_chars.append(f"I（行内容：{line[:50]}...）")
                 halogen_hits.add('I')
+            # 检测中文“卤素”（仅记录，不再作为HF判定条件）
             if '卤素' in line:
-                halogen_hits.add('卤素')
-        if len(halogen_hits) >= 2 or '卤素' in halogen_hits:
-            keywords.add('HF')
+                detected_chars.append(f"卤素（行内容：{line[:50]}...）")
+
+        # 打印检测到的字符
+        with name_lock:
+            if detected_chars:
+                print(f"检测到的触发字符：")
+                for char in list(set(detected_chars)):  # 去重后打印
+                    print(f"  - {char}")
+            else:
+                print("未检测到任何关键词触发字符")
+
+            # 判定HF并打印逻辑（核心修改：仅同时检测到F/Cl/Br/I四种才拼接）
+            print("----- 关键词拼接逻辑 -----")
+            if 'RoHS' in keywords:
+                print(f"✓ 检测到rohs字符 → 拼接RoHS关键词")
+            else:
+                print(f"✗ 未检测到rohs字符 → 不拼接RoHS关键词")
+
+            if 'REACH' in keywords:
+                print(f"✓ 检测到reach/svhc字符 → 拼接REACH关键词")
+            else:
+                print(f"✗ 未检测到reach/svhc字符 → 不拼接REACH关键词")
+
+            # HF判定新逻辑：检查是否同时包含F、Cl、Br、I四种元素
+            required_halogens = {'F', 'Cl', 'Br', 'I'}
+            is_all_halogens_detected = required_halogens.issubset(halogen_hits)
+            if is_all_halogens_detected:
+                keywords.add('HF')
+                print(f"✓ 同时检测到F、Cl、Br、I四种卤素元素（检测到：{halogen_hits}）→ 拼接HF关键词")
+            else:
+                missing_halogens = required_halogens - halogen_hits
+                print(f"✗ 未同时检测到F、Cl、Br、I四种卤素元素 → 不拼接HF关键词")
+                print(f"  - 已检测到：{halogen_hits}")
+                print(f"  - 缺失：{missing_halogens}")
 
         # 有序拼接关键词
         keyword_list = []
@@ -320,7 +380,7 @@ def process_single_pdf(pdf_path):
         if 'HF' in keywords:
             keyword_list.append('HF')
 
-        # 组装最终文件名（严格按需求格式）
+        # 组装最终文件名
         filename_parts = [
             client_final,
             sample_final,
@@ -340,10 +400,16 @@ def process_single_pdf(pdf_path):
         # 重命名文件
         os.rename(pdf_path, final_path)
 
+        with name_lock:
+            print(f"最终生成文件名：{os.path.basename(final_path)}")
+            print(f"===== 完成处理文件：{os.path.basename(pdf_path)} =====\n")
+
         return (pdf_path, final_path, "成功" if not is_dup else "重复",
                 "文件名重复，自动添加后缀" if is_dup else "处理成功")
 
     except Exception as e:
+        with name_lock:
+            print(f"文件 {os.path.basename(pdf_path)} 处理异常：{str(e)}")
         return (pdf_path, "", "失败", f"处理异常：{str(e)}")
 
 
@@ -362,7 +428,9 @@ def main():
 
     # 多线程处理
     max_workers = multiprocessing.cpu_count() * 2
-    print(f"开始处理，共找到 {len(pdf_paths)} 个PDF文件，启用 {max_workers} 个线程...")
+    print(f"\n========== 开始批量处理 ==========")
+    print(f"共找到 {len(pdf_paths)} 个PDF文件，启用 {max_workers} 个线程处理")
+    print("=================================\n")
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {executor.submit(process_single_pdf, path): path for path in pdf_paths}
@@ -375,7 +443,7 @@ def main():
     failed = len([r for r in process_results if r[2] == "失败"])
     skipped = len([r for r in process_results if r[2] == "跳过"])
 
-    # 生成未匹配/重复文件清单（保留基础日志，删除报告）
+    # 生成未匹配/重复文件清单
     unmatched = [r[0] for r in process_results if r[2] == "失败" and "字段匹配失败" in r[3]]
     duplicates = [f"{r[0]} -> {r[1]}" for r in process_results if r[2] == "重复"]
 
@@ -386,16 +454,17 @@ def main():
         with open(duplicate_file, "w", encoding="utf-8") as f:
             f.write("\n".join(duplicates))
 
-    # 打印统计信息
-    print("\n===== 处理完成 =====")
-    print(f"成功重命名：{success}")
-    print(f"重复文件（自动加后缀）：{duplicate}")
-    print(f"处理失败：{failed}")
-    print(f"跳过文件（MSDS）：{skipped}")
+    # 打印最终统计
+    print(f"\n========== 处理完成统计 ==========")
+    print(f"成功重命名：{success} 个")
+    print(f"重复文件（自动加后缀）：{duplicate} 个")
+    print(f"处理失败：{failed} 个")
+    print(f"跳过文件（MSDS）：{skipped} 个")
     if unmatched:
-        print(f"未匹配文件清单已生成：{unmatched_file}")
+        print(f"未匹配字段文件清单：{unmatched_file}")
     if duplicates:
-        print(f"重复文件清单已生成：{duplicate_file}")
+        print(f"重复文件清单：{duplicate_file}")
+    print("=================================")
 
 
 if __name__ == "__main__":
