@@ -8,6 +8,7 @@ folder_path = r"E:\System\download\19-毅品\ROHS"
 unmatched_file = os.path.join(folder_path, "未匹配文件.txt")
 duplicate_file = os.path.join(folder_path, "重复文件.txt")
 
+
 # ================= 工具函数 =================
 def clean_filename(text):
     """清理文件名中的非法字符，并去掉首尾空格和下划线"""
@@ -18,17 +19,28 @@ def clean_filename(text):
     text = re.sub(r'_+', '_', text)
     return text
 
+
 def clean_value(val):
-    """清理PDF提取字段的前缀，例如 ') : ' 或 ': '"""
+    """
+    增强版：清理PDF提取字段的前缀（如 ') : '、': '、冗余点/空格）
+    并过滤掉键名相关的冗余字符（如Sample Name、样品名称等）
+    """
     if not val:
         return ""
     val = val.strip()
+    # 第一步：移除前缀的符号/空格
     val = re.sub(r'^[\)\s]*[:：]?\s*', '', val)
-    return val.strip()
+    # 第二步：移除键名相关的冗余字符（如Sample Name、样品名称、连续点/横线）
+    val = re.sub(r'(样品名称|Sample Name|Paper body)?\s*[.．-]{2,}\s*', '', val, flags=re.I)
+    # 第三步：移除首尾无关字符
+    val = val.strip().strip(".").strip("-").strip()
+    return val
+
 
 def normalize(text):
     """文本归一化：去除空格、统一符号、转小写"""
     return re.sub(r'[\s\u3000]+', '', text).replace(":", "").replace("：", "").lower()
+
 
 def parse_date(date_str):
     """增强版日期解析，支持中文、英文、数字日期"""
@@ -98,10 +110,12 @@ def parse_date(date_str):
                 continue
     return None
 
+
 def extract_chinese(text):
     """提取中文连续串"""
     m = re.search(r'[\u4e00-\u9fff]+', text)
     return m.group(0) if m else text
+
 
 # ================= 成组方案 =================
 schemes = [
@@ -110,10 +124,12 @@ schemes = [
     {"lang": "中", "fields": {"client": ["委托方"], "sample": ["样品名称"], "date": ["样品接收日期"]}},
     {"lang": "中", "fields": {"client": ["报告抬头公司名称"], "sample": ["样品型号"], "date": ["样品接收日期"]}},
     {"lang": "中", "fields": {"client": ["报告抬头公司名称"], "sample": ["样品名称"], "date": ["样品接收日期"]}},
-    {"lang": "英", "fields": {"client": ["Sample Submitted By"], "sample": ["Sample Name"], "date": ["Sample Receiving Date"]}},
+    {"lang": "英",
+     "fields": {"client": ["Sample Submitted By"], "sample": ["Sample Name"], "date": ["Sample Receiving Date"]}},
     {"lang": "英", "fields": {"client": ["Client Name"], "sample": ["Sample Name"], "date": ["Sample Receiving Date"]}},
     {"lang": "中", "fields": {"client": ["委托单位"], "sample": ["材 质"], "date": ["接收日期"]}}
 ]
+
 
 # ================= 匹配函数 =================
 def try_match_all_schemes(lines):
@@ -129,19 +145,25 @@ def try_match_all_schemes(lines):
                 for key in keys:
                     key_n = normalize(key)
                     if key_n in line_n:
-                        # 当前行冒号后内容
-                        m = re.search(rf"{re.escape(key)}\s*[:：]?\s*(.+)", line, re.I)
+                        # 关键修改：只匹配冒号/分隔符后的内容，彻底排除键名部分
+                        # 匹配冒号/中文冒号后的所有内容（包含换行的情况）
                         val = ""
-                        if m and m.group(1).strip():
-                            val = m.group(1).strip()
+                        # 方案1：优先匹配当前行冒号后内容
+                        colon_match = re.search(r'[:：]\s*(.+)', line)
+                        if colon_match and colon_match.group(1).strip():
+                            val = colon_match.group(1).strip()
                         else:
-                            # 连续读取接下来的 3 行
+                            # 方案2：读取后续行（最多3行）
                             next_lines = []
                             for j in range(1, 4):
                                 if i + j < len(lines):
-                                    next_lines.append(lines[i+j].strip())
-                            val = " ".join(l for l in next_lines if l)
+                                    next_line = lines[i + j].strip()
+                                    # 跳过空行或仅含符号的行
+                                    if next_line and not re.match(r'^[.．-]+$', next_line):
+                                        next_lines.append(next_line)
+                            val = " ".join(next_lines)
 
+                        # 清理值（核心：过滤冗余字符）
                         val = clean_value(val)
 
                         # 中文字段仅对 client 提取中文，其余字段保留原样
@@ -158,6 +180,7 @@ def try_match_all_schemes(lines):
 # ================= 重复文件生成 =================
 processed_names = set()
 
+
 def generate_unique_path(base_path):
     base, ext = os.path.splitext(base_path)
     name_only = os.path.basename(base_path)
@@ -172,6 +195,7 @@ def generate_unique_path(base_path):
             processed_names.add(name_only_new)
             return new_name, True
         i += 1
+
 
 # ================= 主流程 =================
 success_count = 0
