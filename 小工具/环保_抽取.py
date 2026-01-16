@@ -4,7 +4,7 @@ import os
 from datetime import datetime, timedelta
 
 # ================= 配置 =================
-folder_path = r"E:\System\download\厂商ROHS、REACH\17-盛强\ROHS"
+folder_path = r"E:\System\download\19-毅品\ROHS"
 unmatched_file = os.path.join(folder_path, "未匹配文件.txt")
 duplicate_file = os.path.join(folder_path, "重复文件.txt")
 
@@ -106,6 +106,7 @@ def extract_chinese(text):
 # ================= 成组方案 =================
 schemes = [
     {"lang": "中", "fields": {"client": ["客户名称"], "sample": ["样品名称"], "date": ["样品接收时间"]}},
+    {"lang": "中", "fields": {"client": ["客户名称"], "sample": ["样品名称"], "date": ["收样日期"]}},
     {"lang": "中", "fields": {"client": ["委托方"], "sample": ["样品名称"], "date": ["样品接收日期"]}},
     {"lang": "中", "fields": {"client": ["报告抬头公司名称"], "sample": ["样品型号"], "date": ["样品接收日期"]}},
     {"lang": "中", "fields": {"client": ["报告抬头公司名称"], "sample": ["样品名称"], "date": ["样品接收日期"]}},
