@@ -8,7 +8,6 @@ from tqdm import tqdm
 import threading
 
 # ================= 字段匹配规则 =================
-# ================= 字段匹配规则 =================
 schemes = [
     # 中文优先
     {"lang": "中", "fields": {"client": ["Applicant", "申请人公司名称"],
@@ -24,6 +23,7 @@ schemes = [
     {"lang": "中", "fields": {"client": ["委托单位"], "sample": ["样品名称"], "date": ["接收日期"]}},
     {"lang": "中", "fields": {"client": ["申请单位"], "sample": ["样品名称"], "date": ["送样日期"]}},
     {"lang": "中", "fields": {"client": ["委托单位"], "sample": ["Sample Name 样品名称"], "date": ["Received Date 接收日期"]}},
+    {"lang": "中", "fields": {"client": ["申请商"], "sample": ["产品名称 ProductName"], "date": ["样 品 接 收 日 期"]}},
     # 英文放后面
     {"lang": "英", "fields": {"client": ["Company Name shown on Report", "Company Name"],
                               "sample": ["Sample Name"], "date": ["Sample Received Date"]}},
@@ -33,8 +33,7 @@ schemes = [
 ]
 
 # ================= 全局配置 =================
-# folder_path = r"E:\System\download\失效pdf\AAAA"  # 可修改
-folder_path = r"E:\System\download\失效pdf"
+folder_path = r"E:\System\download\失效pdf\AAAA"  # 可修改
 failed_file = os.path.join(folder_path, "处理失败文件.txt")
 duplicate_file = os.path.join(folder_path, "重复文件.txt")
 
@@ -61,10 +60,8 @@ def clean_sample_name(text):
     """清洗样品名称：剔除冗余前缀和关键字"""
     if not text:
         return ""
-
     # 去掉前缀 SampleName 或 样品名称
     text = re.sub(r'^(SampleName|样品名称)\s*', '', text, flags=re.I)
-
     # 原有冗余关键字处理
     redundant_keywords = [
         "Manufacturer制造商", "Buyer买家", "Style No(s)", "款号",
@@ -74,7 +71,6 @@ def clean_sample_name(text):
     for keyword in redundant_keywords:
         if keyword in text:
             text = text.split(keyword)[0].strip()
-
     text = re.sub(r'\s+', ' ', text)
     text = re.sub(r'[^\u4e00-\u9fff\w\s]', '', text)
     return text.strip()
@@ -112,28 +108,23 @@ def normalize(text):
 
 
 def parse_date(date_str):
-    """解析日期，支持原文本带字段名"""
     if not date_str:
         return None
     date_str = date_str.strip()
-
-    # 使用正则从文本中提取可能的日期部分
     date_patterns = [
-        r'([A-Za-z]{3,9}\.?\s\d{1,2},\s\d{4})',  # Jul 4, 2024 / July 4, 2024
-        r'(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})',      # 04-07-2024 / 04/07/24
-        r'(\d{4}[-/]\d{1,2}[-/]\d{1,2})',        # 2024-07-04
-        r'(\d{4})年(\d{1,2})月(\d{1,2})日?'       # 中文日期
+        r'([A-Za-z]{3,9}\.?\s\d{1,2},\s\d{4})',
+        r'(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})',
+        r'(\d{4}[-/]\d{1,2}[-/]\d{1,2})',
+        r'(\d{4})年(\d{1,2})月(\d{1,2})日?'
     ]
-
     for pattern in date_patterns:
         m = re.search(pattern, date_str)
         if m:
             date_candidate = m.group(0)
             break
     else:
-        date_candidate = date_str  # 兜底直接用原文本
+        date_candidate = date_str
 
-    # 尝试各种英文日期格式
     english_formats = [
         "%b. %d, %Y", "%b %d, %Y", "%B %d, %Y",
         "%d-%b-%Y", "%d-%B-%Y",
@@ -146,14 +137,10 @@ def parse_date(date_str):
             return datetime.strptime(date_candidate, fmt)
         except:
             continue
-
-    # 中文日期
     m = re.match(r'(\d{4})年(\d{1,2})月(\d{1,2})日?', date_candidate)
     if m:
         year, month, day = map(int, m.groups())
         return datetime(year, month, day)
-
-    # 数字日期格式
     numeric_formats = [
         "%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d",
         "%d-%m-%Y", "%d/%m/%Y", "%d.%m.%Y",
@@ -167,7 +154,6 @@ def parse_date(date_str):
             return dt
         except:
             continue
-
     return None
 
 
@@ -180,7 +166,6 @@ def is_pdf_valid(pdf_path):
         return False
 
 
-# ================= 字段值提取 =================
 def looks_like_date(text):
     if not text:
         return False
@@ -199,12 +184,10 @@ def extract_field_value(lines, key, field_name=None):
             combined_line += " " + lines[i + 1].strip()
         line_n = normalize(combined_line)
         if key_n in line_n and len(key_n) > 1:
-            # 尝试正则提取冒号后的值
             m = re.search(rf"{re.escape(key)}\s*[:：]?\s*(.+)", combined_line, re.I)
             if m and m.group(1).strip():
                 val = m.group(1).strip()
             else:
-                # 取下一行作为值
                 val = ""
                 for j in range(i + 1, min(i + 4, len(lines))):
                     candidate = lines[j].strip()
@@ -212,13 +195,10 @@ def extract_field_value(lines, key, field_name=None):
                         continue
                     val = candidate
                     break
-
-            # 清理字段名前缀残留
             if field_name == "client":
                 val = re.sub(r'(Company Name|Client Name|委托方|委托单位|Applicant)', '', val, flags=re.I)
             elif field_name == "sample":
                 val = re.sub(r'(Sample Name|样品名称|样品描述)', '', val, flags=re.I)
-
             return clean_value(val)
     return ""
 
@@ -242,7 +222,6 @@ def try_match_all_schemes(lines):
     return None, None
 
 
-# ================= 文件重命名 =================
 def safe_rename(src, target):
     base, ext = os.path.splitext(target)
     if not os.path.exists(target):
@@ -257,15 +236,18 @@ def safe_rename(src, target):
         i += 1
 
 
-# ================= 单文件处理 =================
 def process_single_pdf(pdf_path):
     with name_lock:
-        print(f"\n===== 开始处理文件：{os.path.basename(pdf_path)} =====")
+        print(f"\n===== 开始处理文件：{os.path.basename(pdf_path)} =====", flush=True)
 
     if 'msds' in pdf_path.lower():
+        with name_lock:
+            print(f"提取结果 -> client: 未读取, sample: 未读取, date: 未读取", flush=True)
         return (pdf_path, "", "跳过", "文件包含MSDS，无需处理")
 
     if not is_pdf_valid(pdf_path):
+        with name_lock:
+            print(f"提取结果 -> client: 未读取, sample: 未读取, date: 未读取", flush=True)
         return (pdf_path, "", "失败", "PDF文件损坏/加密/无读取权限")
 
     try:
@@ -277,6 +259,14 @@ def process_single_pdf(pdf_path):
                     first_lines.extend([l.strip() for l in t.split("\n") if l.strip()])
 
         result, lang = try_match_all_schemes(first_lines)
+
+        # 无论是否匹配成功，都打印
+        client_val = result['client'] if result and 'client' in result else "未读取"
+        sample_val = result['sample'] if result and 'sample' in result else "未读取"
+        date_val = result['date'] if result and 'date' in result else "未读取"
+        with name_lock:
+            print(f"提取结果 -> client: {client_val}, sample: {sample_val}, date: {date_val}", flush=True)
+
         if not result:
             return (pdf_path, "", "失败", "字段匹配失败（无可用规则）")
 
@@ -290,7 +280,6 @@ def process_single_pdf(pdf_path):
         client_final = clean_filename(client_clean)
         sample_final = clean_filename(sample_clean)
 
-        # 关键词检测
         keywords = set()
         halogen_hits = set()
         for line in first_lines:
@@ -322,16 +311,18 @@ def process_single_pdf(pdf_path):
         final_path, is_dup = safe_rename(pdf_path, new_path)
 
         with name_lock:
-            print(f"最终生成文件名：{os.path.basename(final_path)}")
+            print(f"最终生成文件名：{os.path.basename(final_path)}", flush=True)
 
         return (pdf_path, final_path, "成功" if not is_dup else "重复",
                 "处理成功" if not is_dup else "文件名重复，自动添加后缀")
 
     except Exception as e:
+        with name_lock:
+            print(f"提取结果 -> client: 未读取, sample: 未读取, date: 未读取", flush=True)
         return (pdf_path, "", "失败", f"处理异常：{str(e)}")
 
 
-# ================= 主流程 =================
+
 def main():
     pdf_paths = [os.path.join(root, f) for root, _, files in os.walk(folder_path)
                  for f in files if f.lower().endswith(".pdf")]
@@ -346,25 +337,21 @@ def main():
         for f in tqdm(as_completed(futures), total=len(futures), desc="PDF处理进度"):
             process_results.append(f.result())
 
-    # 统计
     success = len([r for r in process_results if r[2] == "成功"])
     duplicate = len([r for r in process_results if r[2] == "重复"])
     failed = len([r for r in process_results if r[2] == "失败"])
     skipped = len([r for r in process_results if r[2] == "跳过"])
 
-    # 写入失败文件清单
     failed_records = [f"{r[0]} -> 失败原因：{r[3]}" for r in process_results if r[2] == "失败"]
     if failed_records:
         with open(failed_file, "w", encoding="utf-8") as f:
             f.write("\n".join(failed_records))
 
-    # 写入重复文件清单
     duplicates = [f"{r[0]} -> 重命名为：{r[1]}" for r in process_results if r[2] == "重复"]
     if duplicates:
         with open(duplicate_file, "w", encoding="utf-8") as f:
             f.write("\n".join(duplicates))
 
-    # 输出统计
     print(f"\n========== 处理完成统计 ==========")
     print(f"成功重命名：{success} 个")
     print(f"重复文件（自动加后缀）：{duplicate} 个")
