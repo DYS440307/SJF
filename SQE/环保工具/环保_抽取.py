@@ -27,13 +27,14 @@ schemes = [
     # 英文放后面
     {"lang": "英", "fields": {"client": ["Company Name shown on Report", "Company Name"],"sample": ["Sample Name"], "date": ["Sample Received Date"]}},
     {"lang": "英","fields": {"client": ["Sample Submitted By"], "sample": ["Sample Name"], "date": ["Sample Receiving Date"]}},
-    {"lang": "英","fields": {"client": ["Sample Submitted By"], "sample": ["Sample Name"], "date": ["Sample Receiving Date"]}},
+    {"lang": "英","fields": {"client": ["Customer"], "sample": ["SampleName"], "date": ["SampleReceivedDate"]}},
+    {"lang": "英","fields": {"client": ["ClientName"], "sample": ["SampleName"], "date": ["DateofSampleReceived"]}},
     {"lang": "英", "fields": {"client": ["Applicant"], "sample": ["SampleName"], "date": ["SampleReceivedDate"]}}
 ]
 
 # ================= 全局配置 =================
-# folder_path = r"E:\System\download\失效pdf\AAAA"  # 可修改
-folder_path = r"E:\System\download\失效pdf"  # 可修改
+folder_path = r"E:\System\download\失效pdf\AAAA"  # 可修改
+# folder_path = r"E:\System\download\失效pdf"  # 可修改
 failed_file = os.path.join(folder_path, "处理失败文件.txt")
 duplicate_file = os.path.join(folder_path, "重复文件.txt")
 
