@@ -49,7 +49,7 @@ schemes = [
 # ================= 语言识别 =================
 def detect_language(lines):
     has_simplified = has_traditional = has_english = False
-    traditional_chars = "電體樣品廠商"
+    traditional_chars = "樣"
     for line in lines:
         if re.search(r'[\u4e00-\u9fff]', line):
             if any(c in line for c in traditional_chars):
