@@ -5,46 +5,57 @@ from datetime import datetime, timedelta
 from dateutil.parser import parse  # 兼容多语言/多格式日期解析
 
 # -------------------------- 全局配置项 --------------------------
-# 目标处理目录
-TARGET_DIR = r'E:\System\download\厂商ROHS、REACH - 副本\1-诚意达\ROHS'
-# 目标提取项：支持中英文两套关键词（正则匹配大小写不敏感）
+TARGET_DIR = r'E:\System\download\厂商ROHS、REACH - 副本\2-强升'
 target_keys = {
     "客户名称": [
-        r"客户名称[:：]\s*([^\n]+)",  # 中文关键词正则
-        r"Client Name[:]\s*([^\n]+)"  # 英文关键词正则
+        r"报告抬头公司名称\s*([^\n]+)",  # 新模板核心（优先匹配）
+        r"客户名称\s*([^\n]+)",  # 旧模板-中文
+        r"Client Name\s*[:]?\s*([^\n]+)",  # 旧模板-英文（冒号可选）
+        r"Company Name shown on Report\s*[:]?\s*([^\n]+)"  # 新模板英文
     ],
     "样品名称": [
-        r"样品名称[:：]\s*([^\n]+)",  # 中文关键词正则
-        r"Sample Name[:]\s*([^\n]+)"  # 英文关键词正则
+        r"样品名称\s*([^\n]+)",  # 核心匹配（无冒号）
+        r"Sample Name\s*[:]?\s*([^\n]+)"  # 英文（冒号可选）
     ],
     "样品接收时间": [
-        r"样品接收时间[:：]\s*([^\n]+)",  # 中文关键词正则
-        r"Sample Receiving Date[:]\s*([^\n]+)"  # 英文关键词正则
+        r"样品接收日期\s*([^\n]+)",  # 新模板核心（无冒号）
+        r"样品接收时间\s*([^\n]+)",  # 旧模板-中文
+        r"Sample Received Date\s*[:]?\s*([^\n]+)",  # 新模板英文（冒号可选）
+        r"Sample Receiving Date\s*[:]?\s*([^\n]+)"  # 旧模板英文
     ]
 }
-# 过期时间偏移量（365天）
 expire_days = 365
-# 要查找的关键字（大小写不敏感）
-target_keywords = ["rohs", "reach", "pops"]
+target_keywords = ["rohs", "reach", "pops", "svhc"]
 
 
 # -------------------------- 工具函数 --------------------------
 def filter_invalid_filename_chars(filename):
-    """过滤文件名中的非法字符（Windows系统）"""
     invalid_chars = ['\\', '/', ':', '*', '?', '"', '<', '>', '|']
     for char in invalid_chars:
         filename = filename.replace(char, '_')
     return filename.strip()
 
 
+# 新增：清洗字段中的多余符号（冒号、多余空格）
+def clean_field_content(content):
+    """
+    清洗提取的字段内容：去掉中英文冒号、前后空白、多余空格
+    :param content: 原始提取的字段内容
+    :return: 清洗后的干净内容
+    """
+    if content == "未找到对应内容":
+        return content
+    # 步骤1：去掉中英文冒号
+    content = content.replace("：", "").replace(":", "")
+    # 步骤2：去掉前后空白，中间多个空格合并为一个
+    content = re.sub(r'\s+', ' ', content).strip()
+    return content
+
+
 def calculate_expire_date(receive_date_str, days=365):
-    """
-    兼容中英文日期解析，过期时间统一输出为【XXXX年XX月XX日】格式
-    """
     try:
         receive_date = parse(receive_date_str, fuzzy=True)
         expire_date = receive_date + timedelta(days=days)
-        # 统一输出为【XXXX年XX月XX日】格式
         return expire_date.strftime("%Y年%m月%d日")
     except Exception as e:
         print(f"⚠️ 日期解析失败：{receive_date_str}，错误：{e}")
@@ -52,30 +63,18 @@ def calculate_expire_date(receive_date_str, days=365):
 
 
 def get_unique_filename(file_dir, base_filename):
-    """
-    生成不重复的文件名：仅判断【当前文件所在文件夹】内的重名
-    :param file_dir: 待重命名文件的【所在文件夹路径】（核心：仅在该目录内判断重名）
-    :param base_filename: 基础文件名（如"XXX.pdf"）
-    :return: 不重复的完整文件路径（仅在同文件夹重名时拼接序号）
-    """
-    # 拆分文件名和后缀（如"XXX.pdf" → "XXX" + ".pdf"）
     filename_no_ext, ext = os.path.splitext(base_filename)
-    # 拼接当前文件夹下的完整路径（仅判断该文件夹内的文件）
     unique_path = os.path.join(file_dir, base_filename)
     duplicate_num = 1
-
-    # 仅在【当前文件夹】内循环检查重名，不同文件夹同名不触发序号
     while os.path.exists(unique_path):
         new_filename = f"{filename_no_ext}_重名{duplicate_num}{ext}"
         unique_path = os.path.join(file_dir, new_filename)
         duplicate_num += 1
-
     return unique_path
 
 
 # -------------------------- 核心提取函数 --------------------------
 def pdfplumber_extract_multi_page(pdf_path, target_keys, target_keywords):
-    """多页遍历提取PDF内容（兼容中英文模板）"""
     extract_result = {key: "未找到对应内容" for key in target_keys}
     extract_result["检测类型"] = ""
     found_page = None
@@ -87,11 +86,15 @@ def pdfplumber_extract_multi_page(pdf_path, target_keys, target_keywords):
                 if not page_text:
                     continue
 
-                # 提取核心信息（中英文关键词都尝试）
+                # 【调试】打印第1页的原始文本
+                if page_num == 1:
+                    print(f"📝 第{page_num}页原始文本：\n{page_text}\n")
+
+                # 提取核心信息
                 for key, patterns in target_keys.items():
                     if extract_result[key] == "未找到对应内容":
                         for pattern in patterns:
-                            match = re.search(pattern, page_text, re.IGNORECASE)
+                            match = re.search(pattern, page_text, re.IGNORECASE | re.MULTILINE)
                             if match:
                                 extract_result[key] = match.group(1).strip()
                                 break
@@ -119,14 +122,13 @@ def pdfplumber_extract_multi_page(pdf_path, target_keys, target_keywords):
 
 # -------------------------- 单文件重命名函数 --------------------------
 def rename_single_pdf(original_path):
-    """处理单个PDF文件的重命名（兼容中英文模板，仅同文件夹重名才拼接序号）"""
     print(f"\n========== 开始处理文件：{original_path} ==========")
 
     # 1. 提取PDF内容
     extract_result = pdfplumber_extract_multi_page(original_path, target_keys, target_keywords)
 
     # 打印提取结果
-    print("提取结果：")
+    print("提取结果（清洗前）：")
     for key, value in extract_result.items():
         print(f"  {key}：{value}")
 
@@ -135,34 +137,41 @@ def rename_single_pdf(original_path):
         print(f"❌ 提取失败，跳过重命名：{extract_result['error']}")
         return False
 
-    # 3. 提取核心信息
-    customer_name = extract_result["客户名称"]
-    sample_name = extract_result["样品名称"]
-    receive_date = extract_result["样品接收时间"]
+    # 3. 提取核心信息 + 清洗字段（关键修改）
+    customer_name = clean_field_content(extract_result["客户名称"])
+    sample_name = clean_field_content(extract_result["样品名称"])
+    receive_date = clean_field_content(extract_result["样品接收时间"])
     detect_type = extract_result["检测类型"]
 
-    # 4. 检查核心信息是否缺失
+    # 打印清洗后的结果
+    print("提取结果（清洗后）：")
+    print(f"  客户名称：{customer_name}")
+    print(f"  样品名称：{sample_name}")
+    print(f"  样品接收时间：{receive_date}")
+    print(f"  检测类型：{detect_type}")
+
+    # 4. 检查核心信息缺失
     if any(v == "未找到对应内容" for v in [customer_name, sample_name, receive_date]):
         print(f"❌ 关键信息缺失，跳过重命名")
         return False
 
-    # 5. 计算过期时间（统一转中文格式）
+    # 5. 计算过期时间
     expire_date = calculate_expire_date(receive_date, expire_days)
     if expire_date == "日期解析失败":
         print(f"❌ 过期时间计算失败，跳过重命名")
         return False
 
-    # 6. 拼接基础新文件名
+    # 6. 拼接基础新文件名（清洗后无多余冒号）
     filename_parts = [customer_name, sample_name, receive_date, f"过期时间({expire_date})"]
     if detect_type:
         filename_parts.append(detect_type)
     base_filename = "_".join(filename_parts) + ".pdf"
     base_filename = filter_invalid_filename_chars(base_filename)
 
-    # 7. 获取当前文件的【所在文件夹路径】（核心：仅用该目录判断重名）
+    # 7. 获取文件所在目录
     original_dir = os.path.dirname(original_path)
 
-    # 8. 生成不重复的文件名（仅同文件夹重名时拼接「_重名+序号」）
+    # 8. 生成不重复文件名
     new_pdf_path = get_unique_filename(original_dir, base_filename)
 
     # 9. 执行重命名
@@ -177,7 +186,6 @@ def rename_single_pdf(original_path):
 
 # -------------------------- 批量处理函数 --------------------------
 def batch_process_pdfs(target_dir):
-    """批量处理指定目录下的所有PDF文件"""
     total_count = 0
     success_count = 0
     fail_count = 0
@@ -194,7 +202,6 @@ def batch_process_pdfs(target_dir):
                     fail_count += 1
                     fail_files.append(file_path)
 
-    # 输出汇总
     print("\n========== 批量处理完成 ==========")
     print(f"📊 汇总统计：")
     print(f"  总处理PDF数量：{total_count}")
