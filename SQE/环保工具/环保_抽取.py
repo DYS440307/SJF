@@ -23,6 +23,7 @@ schemes = [
     {"lang": "中", "fields": {"client": ["委托单位"], "sample": ["材 质"], "date": ["接收日期"]}},
     {"lang": "中", "fields": {"client": ["委托单位"], "sample": ["样品名称"], "date": ["接收日期"]}},
     {"lang": "中", "fields": {"client": ["申请单位"], "sample": ["样品名称"], "date": ["送样日期"]}},
+    {"lang": "中", "fields": {"client": ["委托单位"], "sample": ["Sample Name 样品名称"], "date": ["Received Date 接收日期"]}},
     # 英文放后面
     {"lang": "英", "fields": {"client": ["Company Name shown on Report", "Company Name"],
                               "sample": ["Sample Name"], "date": ["Sample Received Date"]}},
@@ -32,7 +33,8 @@ schemes = [
 ]
 
 # ================= 全局配置 =================
-folder_path = r"E:\System\download\厂商ROHS、REACH"  # 可修改
+# folder_path = r"E:\System\download\失效pdf\AAAA"  # 可修改
+folder_path = r"E:\System\download\失效pdf"
 failed_file = os.path.join(folder_path, "处理失败文件.txt")
 duplicate_file = os.path.join(folder_path, "重复文件.txt")
 
@@ -56,9 +58,14 @@ def clean_company_name(text):
 
 
 def clean_sample_name(text):
-    """清洗样品名称：剔除冗余"""
+    """清洗样品名称：剔除冗余前缀和关键字"""
     if not text:
         return ""
+
+    # 去掉前缀 SampleName 或 样品名称
+    text = re.sub(r'^(SampleName|样品名称)\s*', '', text, flags=re.I)
+
+    # 原有冗余关键字处理
     redundant_keywords = [
         "Manufacturer制造商", "Buyer买家", "Style No(s)", "款号",
         "PO No.", "采购订单号", "订单号", "型号", "规格",
@@ -67,6 +74,7 @@ def clean_sample_name(text):
     for keyword in redundant_keywords:
         if keyword in text:
             text = text.split(keyword)[0].strip()
+
     text = re.sub(r'\s+', ' ', text)
     text = re.sub(r'[^\u4e00-\u9fff\w\s]', '', text)
     return text.strip()
