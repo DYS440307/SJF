@@ -16,14 +16,22 @@ def normalize(text):
     return re.sub(r'[\s\u3000]+', '', text).replace(":", "").replace("：", "").lower()
 
 def parse_date(date_str):
+    """兼容各种日期格式"""
+    date_str = date_str.strip()
+    date_str = date_str.replace("年", "-").replace("月", "-").replace("日", "")
     for fmt in (
-        "%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d", "%Y年%m月%d日",
-        "%b %d, %Y", "%B %d, %Y"
+        "%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d",
+        "%d-%b-%Y", "%d-%B-%Y", "%b %d, %Y", "%B %d, %Y",
+        "%d-%m-%Y", "%d/%m/%Y"
     ):
         try:
-            return datetime.strptime(date_str.strip(), fmt)
+            return datetime.strptime(date_str, fmt)
         except:
-            pass
+            continue
+    # 尝试仅用数字提取年月日
+    m = re.search(r"(\d{4})[-/\.](\d{1,2})[-/\.](\d{1,2})", date_str)
+    if m:
+        return datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)))
     return None
 
 def generate_unique_path(base_path):
@@ -37,18 +45,12 @@ def generate_unique_path(base_path):
             return new_path, True
         i += 1
 
-# ================= 特殊整组（最高优先） =================
-SPECIAL_GROUP = {
-    "lang": "中",
-    "patterns": {
-        "client": r"委托方\s*/\s*Applicant.*?[:：]\s*(.+)",
-        "sample": r"样品名称\s*/\s*Sample\s*Name.*?[:：]\s*(.+)",
-        "date": r"样品接收日期\s*/\s*Date\s*of\s*Receipt\s*sample.*?[:：]\s*(.+)"
-    }
+def extract_chinese(text):
+    """提取文本中的中文字符连续串"""
+    m = re.search(r'[\u4e00-\u9fff]+', text)
+    return m.group(0) if m else text
 
-}
-
-# ================= 成组方案 =================
+# ================= 成组方案（保持拆开） =================
 schemes = [
     {
         "lang": "中",
@@ -56,6 +58,14 @@ schemes = [
             "client": ["客户名称"],
             "sample": ["样品名称"],
             "date": ["样品接收时间"]
+        }
+    },
+    {
+        "lang": "中",
+        "fields": {
+            "client": ["委托方"],
+            "sample": ["样品名称"],
+            "date": ["样品接收日期"]
         }
     },
     {
@@ -77,25 +87,51 @@ schemes = [
     {
         "lang": "英",
         "fields": {
+            "client": ["Sample Submitted By"],
+            "sample": ["Sample Name"],
+            "date": ["Sample Receiving Date"]
+        }
+    },
+    {
+        "lang": "英",
+        "fields": {
             "client": ["Client Name"],
             "sample": ["Sample Name"],
-            "date": ["Sample Receiving Date", "Sample Received Date"]
+            "date": ["Sample Receiving Date"]
         }
     }
 ]
 
-# ================= 匹配函数 =================
-def try_special_group(lines):
-    temp = {}
-    for field, pattern in SPECIAL_GROUP["patterns"].items():
-        for line in lines:
-            m = re.search(pattern, line)
-            if m:
-                temp[field] = m.group(1).strip()
-                break
-    return (temp, SPECIAL_GROUP["lang"]) if len(temp) == 3 else (None, None)
+# ================= 语言识别 =================
+def detect_language(lines):
+    """判断文本语言类型"""
+    has_simplified = has_traditional = has_english = False
+    traditional_chars = "電體樣品廠商"  # 常用繁体字
+    for line in lines:
+        # 中文字符
+        if re.search(r'[\u4e00-\u9fff]', line):
+            if any(c in line for c in traditional_chars):
+                has_traditional = True
+            else:
+                has_simplified = True
+        # 英文
+        if re.search(r'[A-Za-z]', line):
+            has_english = True
 
-def try_normal_group(scheme_list, lines):
+    # 逻辑判断
+    if has_simplified and has_english:
+        return "中"
+    if has_traditional and has_english:
+        return "英"
+    if has_simplified or has_traditional:
+        return "中"
+    if has_english:
+        return "英"
+    return None
+
+# ================= 匹配函数 =================
+def try_match(scheme_list, lines):
+    """尝试匹配单独组，匹配成功即返回"""
     for scheme in scheme_list:
         temp = {}
         i = 0
@@ -108,15 +144,14 @@ def try_normal_group(scheme_list, lines):
                 for key in keys:
                     key_n = normalize(key)
                     if key_n in line_n:
-                        m = re.search(
-                            rf"{re.escape(key)}\s*[:：]?\s*(.+)",
-                            line,
-                            re.I
-                        )
+                        m = re.search(rf"{re.escape(key)}\s*[:：]?\s*(.+)", line, re.I)
                         if m and m.group(1).strip():
                             temp[field] = m.group(1).strip()
                         elif i + 1 < len(lines):
                             temp[field] = lines[i + 1].strip()
+                        # 中文组字段只保留中文
+                        if scheme["lang"] == "中":
+                            temp[field] = extract_chinese(temp[field])
             i += 1
         if len(temp) == 3:
             return temp, scheme["lang"]
@@ -134,35 +169,30 @@ for root, _, files in os.walk(folder_path):
 
         try:
             with pdfplumber.open(pdf_path) as pdf:
-
-                # ===== 第 1 页：字段识别 =====
                 first_page_text = pdf.pages[0].extract_text()
                 if not first_page_text:
                     unmatched.append(pdf_path)
                     continue
-
                 first_lines = [l.strip() for l in first_page_text.split("\n") if l.strip()]
 
-                # ===== 第 1 + 第 2 页：关键词扫描 =====
+                # 扫描第1+2页
                 scan_lines = []
                 for idx in range(min(2, len(pdf.pages))):
                     t = pdf.pages[idx].extract_text()
                     if t:
                         scan_lines.extend([l.strip() for l in t.split("\n") if l.strip()])
 
-            # ① 特殊整组
-            result, lang = try_special_group(first_lines)
+            # ===== 语言判断 =====
+            lang_detected = detect_language(first_lines)
+            if not lang_detected:
+                unmatched.append(pdf_path)
+                continue
 
-            # ② 中文组
-            if not result:
-                cn_schemes = [s for s in schemes if s["lang"] == "中"]
-                result, lang = try_normal_group(cn_schemes, first_lines)
+            # 选择对应语言的独立组
+            scheme_list = [s for s in schemes if s["lang"] == lang_detected]
 
-            # ③ 英文组
-            if not result:
-                en_schemes = [s for s in schemes if s["lang"] == "英"]
-                result, lang = try_normal_group(en_schemes, first_lines)
-
+            # ===== 匹配字段 =====
+            result, lang = try_match(scheme_list, first_lines)
             if not result:
                 unmatched.append(pdf_path)
                 continue
@@ -181,20 +211,17 @@ for root, _, files in os.walk(folder_path):
                 f"过期时间({expire.strftime('%Y-%m-%d')})"
             )
 
-            # ===== 通用关键词识别（第 1 + 第 2 页）=====
+            # ===== 通用关键词识别 =====
             keywords = []
             halogen_hits = set()
 
             for line in scan_lines:
                 l = line.lower()
-
                 if 'rohs' in l and 'RoHS' not in keywords:
                     keywords.append('RoHS')
-
                 if 'reach' in l or 'svhc' in l:
                     if 'REACH' not in keywords:
                         keywords.append('REACH')
-
                 # HF 元素识别
                 if re.search(r'\bF\b', line, re.I):
                     halogen_hits.add('F')
@@ -215,7 +242,6 @@ for root, _, files in os.walk(folder_path):
 
             final_path, is_dup = generate_unique_path(os.path.join(root, new_name))
             os.rename(pdf_path, final_path)
-
             if is_dup:
                 duplicates.append(f"{pdf_path} -> {final_path}")
 
