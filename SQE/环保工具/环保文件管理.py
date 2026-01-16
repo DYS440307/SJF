@@ -2,24 +2,30 @@ import pdfplumber
 import re
 import os
 from datetime import datetime, timedelta
-from dateutil.parser import parse  # 兼容多种日期格式解析
+from dateutil.parser import parse  # 兼容多语言/多格式日期解析
 
 # -------------------------- 全局配置项 --------------------------
-# 目标处理目录（所有PDF都在这个目录下，可包含子目录，如需仅单层可修改遍历逻辑）
+# 目标处理目录（所有PDF都在这个目录下，含子目录）
 TARGET_DIR = r'E:\System\download\厂商ROHS、REACH - 副本\1-诚意达\REACH'
-# 目标提取项（蓝色框关键词+正则）
+# 目标提取项：支持中英文两套关键词（正则匹配大小写不敏感）
 target_keys = {
-    #SGS中文识别搞定
-    "客户名称": r"客户名称[:：]\s*([^\n]+)",
-    "样品名称": r"样品名称[:：]\s*([^\n]+)",
-    "样品接收时间": r"样品接收时间[:：]\s*([^\n]+)"
+    "客户名称": [
+        r"客户名称[:：]\s*([^\n]+)",  # 中文关键词正则
+        r"Client Name[:]\s*([^\n]+)"  # 英文关键词正则（Client Name: 后内容）
+    ],
+    "样品名称": [
+        r"样品名称[:：]\s*([^\n]+)",  # 中文关键词正则
+        r"Sample Name[:]\s*([^\n]+)"  # 英文关键词正则（Sample Name: 后内容）
+    ],
+    "样品接收时间": [
+        r"样品接收时间[:：]\s*([^\n]+)",  # 中文关键词正则
+        r"Sample Receiving Date[:]\s*([^\n]+)"  # 英文关键词正则（Sample Receiving Date: 后内容）
+    ]
 }
-# 日期格式（提取的时间转datetime用，匹配"2025年05月13日"格式）
-date_format = "%Y年%m月%d日"
 # 过期时间偏移量（365天）
 expire_days = 365
 # 要查找的关键字（大小写不敏感）
-target_keywords = ["rohs", "reach"]
+target_keywords = ["rohs", "reach", "svhc"]  # 新增svhc适配英文报告
 
 
 # -------------------------- 工具函数 --------------------------
@@ -31,31 +37,40 @@ def filter_invalid_filename_chars(filename):
     return filename.strip()
 
 
-def calculate_expire_date(receive_date_str, date_format, days=365):
-    """计算过期时间：接收时间 + 指定天数"""
+def calculate_expire_date(receive_date_str, days=365):
+    """
+    兼容中英文日期格式的过期时间计算
+    支持：2025年05月13日、Jun 21, 2024、2025.5.13等格式
+    """
     try:
-        # 解析接收时间为datetime对象
-        receive_date = datetime.strptime(receive_date_str, date_format)
+        # 用dateutil自动识别日期格式（兼容中英文）
+        receive_date = parse(receive_date_str, fuzzy=True)
         # 计算过期时间
         expire_date = receive_date + timedelta(days=days)
-        # 转为和接收时间相同的格式
-        return expire_date.strftime(date_format)
+
+        # 匹配原日期格式，保持输出格式一致
+        # 中文日期（2025年05月13日）
+        if re.match(r"\d{4}年\d{1,2}月\d{1,2}日", receive_date_str):
+            return expire_date.strftime("%Y年%m月%d日")
+        # 英文日期（Jun 21, 2024）
+        elif re.match(r"[A-Za-z]{3} \d{1,2}, \d{4}", receive_date_str):
+            return expire_date.strftime("%b %d, %Y")
+        # 其他格式（如2025.5.13）
+        else:
+            return expire_date.strftime("%Y-%m-%d")
     except Exception as e:
-        # 兼容其他日期格式（如"2025.5.13"）
-        try:
-            receive_date = parse(receive_date_str, fuzzy=True)
-            expire_date = receive_date + timedelta(days=days)
-            return expire_date.strftime(date_format)
-        except:
-            print(f"⚠️ 日期解析失败：{receive_date_str}，错误：{e}")
-            return "日期解析失败"
+        print(f"⚠️ 日期解析失败：{receive_date_str}，错误：{e}")
+        return "日期解析失败"
 
 
 # -------------------------- 核心提取函数 --------------------------
 def pdfplumber_extract_multi_page(pdf_path, target_keys, target_keywords):
-    """多页遍历提取原生PDF内容，同时查找指定关键字"""
+    """
+    多页遍历提取PDF内容（兼容中英文模板）
+    优先匹配中文关键词，匹配不到则匹配英文关键词
+    """
     extract_result = {key: "未找到对应内容" for key in target_keys}
-    extract_result["检测类型"] = ""  # 存储找到的RoHs/REACH关键字
+    extract_result["检测类型"] = ""  # 存储找到的RoHs/REACH/SVHC关键字
     found_page = None
 
     try:
@@ -66,19 +81,21 @@ def pdfplumber_extract_multi_page(pdf_path, target_keys, target_keywords):
                 if not page_text:
                     continue  # 该页无文本，跳过
 
-                # 1. 提取客户名称/样品名称/接收时间（只找还没找到的）
-                for key, pattern in target_keys.items():
+                # 1. 提取核心信息（中英文关键词都尝试）
+                for key, patterns in target_keys.items():
                     if extract_result[key] == "未找到对应内容":
-                        match = re.search(pattern, page_text)
-                        if match:
-                            extract_result[key] = match.group(1).strip()
+                        for pattern in patterns:
+                            match = re.search(pattern, page_text, re.IGNORECASE)  # 大小写不敏感
+                            if match:
+                                extract_result[key] = match.group(1).strip()
+                                break  # 匹配到一个就停止
 
-                # 2. 查找RoHs/REACH关键字（大小写不敏感，找到第一个即停止）
+                # 2. 查找检测类型关键字（ROHS/REACH/SVHC，大小写不敏感）
                 if not extract_result["检测类型"]:
-                    page_text_lower = page_text.lower()  # 转小写统一匹配
+                    page_text_lower = page_text.lower()
                     for keyword in target_keywords:
                         if keyword in page_text_lower:
-                            extract_result["检测类型"] = keyword.upper()  # 转大写拼接
+                            extract_result["检测类型"] = keyword.upper()
                             break
 
                 # 基础信息全找到就终止遍历
@@ -96,10 +113,10 @@ def pdfplumber_extract_multi_page(pdf_path, target_keys, target_keywords):
 
 # -------------------------- 单文件重命名函数 --------------------------
 def rename_single_pdf(original_path):
-    """处理单个PDF文件的重命名，返回处理结果（成功/失败）"""
+    """处理单个PDF文件的重命名（兼容中英文模板），返回处理结果"""
     print(f"\n========== 开始处理文件：{original_path} ==========")
 
-    # 1. 提取PDF内容（含关键字查找）
+    # 1. 提取PDF内容
     extract_result = pdfplumber_extract_multi_page(original_path, target_keys, target_keywords)
 
     # 打印提取结果
@@ -123,13 +140,13 @@ def rename_single_pdf(original_path):
         print(f"❌ 关键信息缺失，跳过重命名")
         return False
 
-    # 5. 计算过期时间
-    expire_date = calculate_expire_date(receive_date, date_format, expire_days)
+    # 5. 计算过期时间（兼容中英文日期）
+    expire_date = calculate_expire_date(receive_date, expire_days)
     if expire_date == "日期解析失败":
         print(f"❌ 过期时间计算失败，跳过重命名")
         return False
 
-    # 6. 拼接新文件名
+    # 6. 拼接新文件名（中英文信息都兼容）
     filename_parts = [customer_name, sample_name, receive_date, f"过期时间({expire_date})"]
     if detect_type:
         filename_parts.append(detect_type)
@@ -157,28 +174,26 @@ def rename_single_pdf(original_path):
 
 # -------------------------- 批量处理函数 --------------------------
 def batch_process_pdfs(target_dir):
-    """批量处理指定目录下的所有PDF文件"""
+    """批量处理指定目录下的所有PDF文件（兼容中英文模板）"""
     # 统计变量
-    total_count = 0  # 总PDF数量
-    success_count = 0  # 成功数量
-    fail_count = 0  # 失败数量
-    fail_files = []  # 失败的文件列表
+    total_count = 0
+    success_count = 0
+    fail_count = 0
+    fail_files = []
 
-    # 遍历目录（含子目录，如需仅单层可将os.walk改为os.listdir）
+    # 遍历目录（含子目录）
     for root, dirs, files in os.walk(target_dir):
         for file in files:
-            # 筛选PDF文件（大小写不敏感）
             if file.lower().endswith(".pdf"):
                 total_count += 1
                 file_path = os.path.join(root, file)
-                # 处理单个文件
                 if rename_single_pdf(file_path):
                     success_count += 1
                 else:
                     fail_count += 1
                     fail_files.append(file_path)
 
-    # 输出批量处理汇总
+    # 输出汇总
     print("\n========== 批量处理完成 ==========")
     print(f"📊 汇总统计：")
     print(f"  总处理PDF数量：{total_count}")
@@ -193,9 +208,7 @@ def batch_process_pdfs(target_dir):
 
 # -------------------------- 主执行逻辑 --------------------------
 if __name__ == "__main__":
-    # 检查目标目录是否存在
     if not os.path.exists(TARGET_DIR):
         print(f"❌ 目标目录不存在：{TARGET_DIR}")
     else:
-        # 执行批量处理
         batch_process_pdfs(TARGET_DIR)
