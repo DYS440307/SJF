@@ -10,7 +10,7 @@ from tqdm import tqdm
 import threading
 
 # ================= 全局配置 =================
-folder_path = r"E:\System\download\厂商ROHS、REACH"
+folder_path = r"E:\System\download\厂商ROHS、REACH\10-西铭\REACH"
 unmatched_file = os.path.join(folder_path, "未匹配文件.txt")
 duplicate_file = os.path.join(folder_path, "重复文件.txt")
 processed_log = os.path.join(folder_path, "已处理文件记录.txt")
@@ -161,13 +161,19 @@ def backup_file(src_path):
 
 # ================= 字段匹配规则 =================
 schemes = [
+    # 新增：适配新模板（中英混合字段）- 优先级最高
+    {"lang": "中", "fields": {
+        "client": ["Applicant", "申请人公司名称"],
+        "sample": ["Sample Description", "样品描述", "Sample(s) received is(are) stated to be", "收到的送测样品为"],
+        "date": ["Date of Submission", "样品收取日期"]
+    }},
+    # 原有规则（保留，兼容旧模板）
     {"lang": "中", "fields": {"client": ["客户名称"], "sample": ["样品名称"], "date": ["样品接收时间"]}},
     {"lang": "中", "fields": {"client": ["客户名称"], "sample": ["样品名称"], "date": ["收样日期"]}},
     {"lang": "中", "fields": {"client": ["委托方"], "sample": ["样品名称"], "date": ["样品接收日期"]}},
     {"lang": "中", "fields": {"client": ["报告抬头公司名称"], "sample": ["样品型号"], "date": ["样品接收日期"]}},
     {"lang": "中", "fields": {"client": ["报告抬头公司名称"], "sample": ["样品名称"], "date": ["样品接收日期"]}},
-    {"lang": "英",
-     "fields": {"client": ["Sample Submitted By"], "sample": ["Sample Name"], "date": ["Sample Receiving Date"]}},
+    {"lang": "英", "fields": {"client": ["Sample Submitted By"], "sample": ["Sample Name"], "date": ["Sample Receiving Date"]}},
     {"lang": "英", "fields": {"client": ["Client Name"], "sample": ["Sample Name"], "date": ["Sample Receiving Date"]}},
     {"lang": "中", "fields": {"client": ["委托单位"], "sample": ["材 质"], "date": ["接收日期"]}}
 ]
