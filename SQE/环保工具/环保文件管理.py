@@ -5,23 +5,37 @@ from datetime import datetime, timedelta
 from dateutil.parser import parse  # 兼容多语言/多格式日期解析
 
 # -------------------------- 全局配置项 --------------------------
-TARGET_DIR = r'E:\System\download\厂商ROHS、REACH - 副本\2-强升'
+TARGET_DIR = r'E:\System\download\厂商ROHS、REACH - 副本\3-生湖\REACH'
+# 优化后的字段匹配规则（极致兼容英文模板排版）
 target_keys = {
     "客户名称": [
-        r"报告抬头公司名称\s*([^\n]+)",  # 新模板核心（优先匹配）
-        r"客户名称\s*([^\n]+)",  # 旧模板-中文
-        r"Client Name\s*[:]?\s*([^\n]+)",  # 旧模板-英文（冒号可选）
-        r"Company Name shown on Report\s*[:]?\s*([^\n]+)"  # 新模板英文
+        # 兼容任意拆行/空格：匹配"Company Name" + 任意字符 + "shown on Report" 后的值
+        r"Company Name.*shown on Report[\s:]*\n?[\s:]*([^\n]+)",
+        # 兜底匹配：只要包含"Company Name"，就取后续第一行有效内容
+        r"Company Name[\s\S]*?\n\s*([^\n]+)",
+        # 原有中文兼容规则
+        r"客户名称\s*[:：]\s*([^\n]+)",
+        r"报告抬头公司名称\s*([^\n]+)",
+        r"Client Name\s*[:]?\s*([^\n]+)",
     ],
     "样品名称": [
-        r"样品名称\s*([^\n]+)",  # 核心匹配（无冒号）
-        r"Sample Name\s*[:]?\s*([^\n]+)"  # 英文（冒号可选）
+        # 兼容拆行/空格：匹配"Sample Name"后的值（不管是否换行）
+        r"Sample Name[\s:]*\n?[\s:]*([^\n]+)",
+        # 兜底：Sample Name + 任意字符后取第一行内容
+        r"Sample Name[\s\S]*?\n\s*([^\n]+)",
+        # 原有中文兼容规则
+        r"样品名称\s*[:：]\s*([^\n]+)",
     ],
     "样品接收时间": [
-        r"样品接收日期\s*([^\n]+)",  # 新模板核心（无冒号）
-        r"样品接收时间\s*([^\n]+)",  # 旧模板-中文
-        r"Sample Received Date\s*[:]?\s*([^\n]+)",  # 新模板英文（冒号可选）
-        r"Sample Receiving Date\s*[:]?\s*([^\n]+)"  # 旧模板英文
+        # 兼容拆行/空格：匹配"Sample Received Date"后的值
+        r"Sample Received Date[\s:]*\n?[\s:]*([^\n]+)",
+        # 兜底：Sample Received Date + 任意字符后取第一行内容
+        r"Sample Received Date[\s\S]*?\n\s*([^\n]+)",
+        # 原有中文兼容规则
+        r"收样日期\s*[:：]\s*([^\n]+)",
+        r"样品接收日期\s*([^\n]+)",
+        r"样品接收时间\s*([^\n]+)",
+        r"Sample Receiving Date\s*[:]?\s*([^\n]+)",
     ]
 }
 expire_days = 365
@@ -51,8 +65,10 @@ def clean_field_content(content):
 
 def calculate_expire_date(receive_date_str, days=365):
     try:
+        # 兼容英文日期（Jan. 2, 2025）和中文日期（2024年06月26日）解析
         receive_date = parse(receive_date_str, fuzzy=True)
         expire_date = receive_date + timedelta(days=days)
+        # 统一过期时间输出格式为“XXXX年XX月XX日”，保证文件名格式一致
         return expire_date.strftime("%Y年%m月%d日")
     except Exception as e:
         print(f"⚠️ 日期解析失败：{receive_date_str}，错误：{e}")
@@ -70,7 +86,7 @@ def get_unique_filename(file_dir, base_filename):
     return unique_path
 
 
-# -------------------------- 核心提取函数 --------------------------
+# -------------------------- 核心提取函数（新增调试+优化匹配） --------------------------
 def pdfplumber_extract_multi_page(pdf_path, target_keys, target_keywords):
     extract_result = {key: "未找到对应内容" for key in target_keys}
     extract_result["检测类型"] = ""
@@ -85,11 +101,16 @@ def pdfplumber_extract_multi_page(pdf_path, target_keys, target_keywords):
                 if not page_text:
                     continue
 
+                # ========== 新增调试：打印第1页原始文本（关键！） ==========
+                if page_num == 1:
+                    print(f"\n【调试】{pdf_path} 第{page_num}页原始文本：\n{page_text}\n")
+                # =========================================================
+
                 # 1. 提取基础信息（客户/样品/时间）：匹配到后不再重复提取
                 for key, patterns in target_keys.items():
                     if extract_result[key] == "未找到对应内容":
                         for pattern in patterns:
-                            match = re.search(pattern, page_text, re.IGNORECASE | re.MULTILINE)
+                            match = re.search(pattern, page_text, re.IGNORECASE | re.MULTILINE | re.DOTALL)
                             if match:
                                 extract_result[key] = match.group(1).strip()
                                 break
@@ -138,13 +159,13 @@ def rename_single_pdf(original_path):
         print(f"❌ 提取失败，跳过重命名：{extract_result['error']}")
         return False
 
-    # 3. 提取核心信息 + 清洗字段（删除客户参考信息相关）
+    # 3. 提取核心信息 + 清洗字段
     customer_name = clean_field_content(extract_result["客户名称"])
     sample_name = clean_field_content(extract_result["样品名称"])
     receive_date = clean_field_content(extract_result["样品接收时间"])
     detect_type = extract_result["检测类型"]
 
-    # 打印清洗后的结果（删除客户参考信息行）
+    # 打印清洗后的结果
     print("提取结果（清洗后）：")
     print(f"  客户名称：{customer_name}")
     print(f"  样品名称：{sample_name}")
@@ -157,13 +178,13 @@ def rename_single_pdf(original_path):
         print(f"❌ 关键必填信息缺失（客户名称/样品名称/样品接收时间），跳过重命名")
         return False
 
-    # 5. 计算过期时间
+    # 5. 计算过期时间（兼容英文日期解析）
     expire_date = calculate_expire_date(receive_date, expire_days)
     if expire_date == "日期解析失败":
         print(f"❌ 过期时间计算失败，跳过重命名")
         return False
 
-    # 6. 拼接基础新文件名（删除客户参考信息拼接项）
+    # 6. 拼接基础新文件名
     filename_parts = [
         customer_name,
         sample_name,
