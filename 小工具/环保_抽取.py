@@ -4,7 +4,7 @@ import os
 from datetime import datetime, timedelta
 
 # ================= 配置 =================
-folder_path = r"E:\System\download\1-诚意达\REACH"
+folder_path = r"E:\System\download\卤素"
 unmatched_file = os.path.join(folder_path, "未匹配文件.txt")
 duplicate_file = os.path.join(folder_path, "重复文件.txt")
 
@@ -13,15 +13,12 @@ def clean_filename(text):
     return re.sub(r'[\\/:*?"<>|]', '', text).strip()
 
 def normalize(text):
-    # 去除所有空白字符（空格、tab、全角空格等）并去掉冒号
     return re.sub(r'[\s\u3000]+', '', text).replace(":", "").replace("：", "").lower()
 
 def parse_date(date_str):
-    # ★ 修复：支持英文月份
     for fmt in (
         "%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d", "%Y年%m月%d日",
-        "%b %d, %Y",     # Jun 26, 2024
-        "%B %d, %Y"      # July 02, 2024
+        "%b %d, %Y", "%B %d, %Y"
     ):
         try:
             return datetime.strptime(date_str.strip(), fmt)
@@ -48,11 +45,11 @@ SPECIAL_GROUP = {
         "sample": r"样品名称\s*/\s*Sample\s*Name.*?[:：]\s*(.+)",
         "date": r"样品接收日期\s*/\s*Date\s*of\s*Receipt\s*sample.*?[:：]\s*(.+)"
     }
+
 }
 
-# ================= 成组方案（强绑定） =================
+# ================= 成组方案 =================
 schemes = [
-    # 中文方案1
     {
         "lang": "中",
         "fields": {
@@ -61,7 +58,6 @@ schemes = [
             "date": ["样品接收时间"]
         }
     },
-    # 中文方案2
     {
         "lang": "中",
         "fields": {
@@ -70,7 +66,6 @@ schemes = [
             "date": ["样品接收日期"]
         }
     },
-    # 中文方案3
     {
         "lang": "中",
         "fields": {
@@ -79,7 +74,6 @@ schemes = [
             "date": ["样品接收日期"]
         }
     },
-    # 英文方案
     {
         "lang": "英",
         "fields": {
@@ -114,7 +108,6 @@ def try_normal_group(scheme_list, lines):
                 for key in keys:
                     key_n = normalize(key)
                     if key_n in line_n:
-                        # ★ 修复：允许 key 后只有空格，没有冒号
                         m = re.search(
                             rf"{re.escape(key)}\s*[:：]?\s*(.+)",
                             line,
@@ -141,26 +134,34 @@ for root, _, files in os.walk(folder_path):
 
         try:
             with pdfplumber.open(pdf_path) as pdf:
-                text = pdf.pages[0].extract_text()
 
-            if not text:
-                unmatched.append(pdf_path)
-                continue
+                # ===== 第 1 页：字段识别 =====
+                first_page_text = pdf.pages[0].extract_text()
+                if not first_page_text:
+                    unmatched.append(pdf_path)
+                    continue
 
-            lines = [l.strip() for l in text.split("\n") if l.strip()]
+                first_lines = [l.strip() for l in first_page_text.split("\n") if l.strip()]
+
+                # ===== 第 1 + 第 2 页：关键词扫描 =====
+                scan_lines = []
+                for idx in range(min(2, len(pdf.pages))):
+                    t = pdf.pages[idx].extract_text()
+                    if t:
+                        scan_lines.extend([l.strip() for l in t.split("\n") if l.strip()])
 
             # ① 特殊整组
-            result, lang = try_special_group(lines)
+            result, lang = try_special_group(first_lines)
 
-            # ② 普通中文组
+            # ② 中文组
             if not result:
                 cn_schemes = [s for s in schemes if s["lang"] == "中"]
-                result, lang = try_normal_group(cn_schemes, lines)
+                result, lang = try_normal_group(cn_schemes, first_lines)
 
-            # ③ 英文组兜底
+            # ③ 英文组
             if not result:
                 en_schemes = [s for s in schemes if s["lang"] == "英"]
-                result, lang = try_normal_group(en_schemes, lines)
+                result, lang = try_normal_group(en_schemes, first_lines)
 
             if not result:
                 unmatched.append(pdf_path)
@@ -180,25 +181,41 @@ for root, _, files in os.walk(folder_path):
                 f"过期时间({expire.strftime('%Y-%m-%d')})"
             )
 
-            # ★ 修复：REACH / SVHC 统一拼 REACH
-            if lang == "中":
-                keywords = []
-                for line in lines:
-                    l_lower = line.lower()
-                    if 'rohs' in l_lower and 'RoHS' not in keywords:
-                        keywords.append('RoHS')
-                    if 'reach' in l_lower or 'svhc' in l_lower:
-                        if 'REACH' not in keywords:
-                            keywords.append('REACH')
-                if keywords:
-                    new_name += '_' + '_'.join(keywords)
+            # ===== 通用关键词识别（第 1 + 第 2 页）=====
+            keywords = []
+            halogen_hits = set()
+
+            for line in scan_lines:
+                l = line.lower()
+
+                if 'rohs' in l and 'RoHS' not in keywords:
+                    keywords.append('RoHS')
+
+                if 'reach' in l or 'svhc' in l:
+                    if 'REACH' not in keywords:
+                        keywords.append('REACH')
+
+                # HF 元素识别
+                if re.search(r'\bF\b', line, re.I):
+                    halogen_hits.add('F')
+                if re.search(r'\bCl\b', line, re.I):
+                    halogen_hits.add('Cl')
+                if re.search(r'\bBr\b', line, re.I):
+                    halogen_hits.add('Br')
+                if re.search(r'\bI\b', line, re.I):
+                    halogen_hits.add('I')
+
+            if len(halogen_hits) >= 2:
+                keywords.append('HF')
+
+            if keywords:
+                new_name += "_" + "_".join(keywords)
 
             new_name += ".pdf"
 
             final_path, is_dup = generate_unique_path(os.path.join(root, new_name))
             os.rename(pdf_path, final_path)
 
-            # ★ 修复：重复文件记录语义
             if is_dup:
                 duplicates.append(f"{pdf_path} -> {final_path}")
 
@@ -208,7 +225,7 @@ for root, _, files in os.walk(folder_path):
             unmatched.append(pdf_path)
             print(f"[异常] {pdf_path} → {e}")
 
-# ================= 输出记录 =================
+# ================= 输出 =================
 if unmatched:
     with open(unmatched_file, "w", encoding="utf-8") as f:
         f.write("\n".join(unmatched))
