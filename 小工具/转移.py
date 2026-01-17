@@ -1,10 +1,9 @@
 import pandas as pd
 from openpyxl import load_workbook
 from openpyxl.drawing.image import Image
-from openpyxl.utils import get_column_letter
 import os
 
-# ===================== 核心配置区（无需修改转换逻辑，仅核对路径/位置）=====================
+# ===================== 核心配置区（已修正单元格映射）=====================
 # 1. 文件路径配置
 source_file_path = r"E:\System\download\供应商索赔清单 .xlsx"
 template_sheet_name = "扣款通知单1"  # 模板工作表名
@@ -33,11 +32,11 @@ IMAGE_CONFIGS = [
     }
 ]
 
-# 3. 数据填充单元格映射
+# 3. 数据填充单元格映射（已修正为匹配模板的B4/E4/B5）
 CELL_MAP = {
-    "supplier": "B3",  # 供方名称
-    "amount": "E3",  # 质量保证金
-    "abnormal": "B6"  # 异常描述
+    "supplier": "B4",  # 供方名称（原B3→修正为B4）
+    "amount": "E4",    # 质量保证金（原E3→修正为E4）
+    "abnormal": "B5"   # 异常描述（原B6→修正为B5）
 }
 
 
@@ -113,7 +112,7 @@ def batch_generate_with_pandas():
             new_ws = wb.copy_worksheet(template_ws)
             new_ws.title = new_sheet_name
 
-            # 2. 填充核心数据
+            # 2. 填充核心数据（使用修正后的单元格映射）
             new_ws[CELL_MAP["supplier"]] = row["供方名称"]
             new_ws[CELL_MAP["amount"]] = row["质量保证金(¥)"]
             new_ws[CELL_MAP["abnormal"]] = row["异常描述"]
