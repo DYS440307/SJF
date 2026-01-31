@@ -41,7 +41,7 @@ for col in date_columns:
     df_source[col] = pd.to_datetime(df_source[col], errors='coerce').dt.strftime("%Y年%m月%d日")
     df_source[col] = df_source[col].fillna("")
 
-# ---------------------- 第三步：精准映射（仅用“使用中设备名称”作为使用设备） ----------------------
+# ---------------------- 第三步：精准映射+替换特殊符号 ----------------------
 df_target = pd.DataFrame()
 
 # 严格按实验记录列顺序填充
@@ -61,8 +61,10 @@ df_target["条件"] = df_source["测试条件"]  # M列
 df_target["报告编号"] = df_source.iloc[:, 0]  # N列
 df_target["问题描述"] = ""  # O列
 df_target["备注"] = ""  # P列
-# 核心修改：仅使用“使用中设备名称”作为“使用设备”，完全不涉及设备通道
+# 核心修改1：仅使用“使用中设备名称”作为“使用设备”，完全不涉及设备通道
 df_target["使用设备"] = df_source["使用中设备名称"]
+# 核心新增：将“使用设备”列中的英文逗号(,)替换为中文分号(；)
+df_target["使用设备"] = df_target["使用设备"].astype(str).str.replace(",", "；", regex=False)
 
 # 替换全文的英文分号(;)为中文分号(；)
 for col in df_target.columns:
@@ -85,4 +87,7 @@ with pd.ExcelWriter(
     )
 
 print("✅ 操作完成！")
-print("📌 核心变更：“使用设备”列仅包含“使用中设备名称”，无设备通道内容；其他格式要求均已满足。")
+print("📌 核心变更：")
+print("  1. “使用设备”列仅包含“使用中设备名称”，无设备通道内容；")
+print("  2. “使用设备”列中的英文逗号(,)已替换为中文分号(；)；")
+print("  3. 全文英文分号(;)已替换为中文分号(；)，日期列已转为年月日格式。")
