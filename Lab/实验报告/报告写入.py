@@ -221,7 +221,7 @@ def write_to_report_template(report_data, template_file):
 
 def main():
     # 文件路径配置
-    LAB_RECORD_FILE = r"Z:\3-品质部\实验室\邓洋枢\2-实验记录汇总表\2025年\老化实验记录.xlsx"
+    LAB_RECORD_FILE = r"E:\System\pic\A报告\老化实验记录.xlsx"
     REPORT_TEMPLATE = r"E:\System\pic\A报告\试验报告.xlsx"
 
     # 获取用户输入的报告编号

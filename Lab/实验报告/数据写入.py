@@ -8,7 +8,7 @@ EXCEL_DIR = r"E:\System\pic\A报告"  # Excel文件所在目录
 SEARCH_TEXT = "SYS"  # 文件名中要包含的文本
 SOURCE_FILE = r"E:\System\pic\A报告\IMP数据.xlsx"  # 源数据文件路径
 CONFIG_DIR = r"E:\System\pic\A报告\模板\配置文件"  # 配置文件目录
-LAB_RECORD_FILE = r"Z:\3-品质部\实验室\邓洋枢\2-实验记录汇总表\2025年\老化实验记录.xlsx"  # 老化实验记录文件
+LAB_RECORD_FILE = r"E:\System\pic\A报告\老化实验记录.xlsx"  # 老化实验记录文件
 
 # 数据映射：源工作表 -> (起始单元格)
 SHEET_MAPPING = {

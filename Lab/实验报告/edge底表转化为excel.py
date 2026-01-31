@@ -31,19 +31,25 @@ except Exception as e:
 df_source = pd.read_excel(
     file_path,
     sheet_name="实验底表",
-    header=0,
-    dtype={"设备通道": str}  # 强制设备通道为字符串，避免拼接出错
+    header=0
+    # 完全保留所有列的原始格式，不做强制类型转换
 )
 
-# ---------------------- 第三步：精准映射（无多余空列） ----------------------
+# 转换日期列（底表D/E/F列：委托时间、开始时间、结束时间）为“年月日”格式
+date_columns = ["委托时间", "开始时间", "结束时间"]
+for col in date_columns:
+    df_source[col] = pd.to_datetime(df_source[col], errors='coerce').dt.strftime("%Y年%m月%d日")
+    df_source[col] = df_source[col].fillna("")
+
+# ---------------------- 第三步：精准映射（仅用“使用中设备名称”作为使用设备） ----------------------
 df_target = pd.DataFrame()
 
-# 严格按实验记录实际需要的列顺序填充
-df_target["委托时间"] = df_source["委托时间"]  # A列
-df_target["开始测试"] = df_source["开始时间"]  # B列
-df_target["结束测试"] = df_source["结束时间"]  # C列
+# 严格按实验记录列顺序填充
+df_target["委托时间"] = df_source["委托时间"]  # A列（年月日格式）
+df_target["开始测试"] = df_source["开始时间"]  # B列（年月日格式）
+df_target["结束测试"] = df_source["结束时间"]  # C列（年月日格式）
 df_target["进度"] = df_source["实验进度"]  # D列
-df_target["出具报告"] = "是"  # E列（固定值）
+df_target["出具报告"] = "是"  # E列
 df_target["送测部门"] = df_source["送测部门"]  # F列
 df_target["送测人"] = df_source["送测人"]  # G列
 df_target["生产批号"] = df_source["样品批号"]  # H列
@@ -55,23 +61,28 @@ df_target["条件"] = df_source["测试条件"]  # M列
 df_target["报告编号"] = df_source.iloc[:, 0]  # N列
 df_target["问题描述"] = ""  # O列
 df_target["备注"] = ""  # P列
-# 拼接使用设备：使用中设备名称 + 设备通道
-df_target["使用设备"] = df_source["使用中设备名称"] + df_source["设备通道"]
+# 核心修改：仅使用“使用中设备名称”作为“使用设备”，完全不涉及设备通道
+df_target["使用设备"] = df_source["使用中设备名称"]
 
-# ---------------------- 第四步：写入新数据（从第二行开始） ----------------------
+# 替换全文的英文分号(;)为中文分号(；)
+for col in df_target.columns:
+    if df_target[col].dtype == "object":
+        df_target[col] = df_target[col].astype(str).str.replace(";", "；", regex=False)
+
+# ---------------------- 第四步：写入新数据 ----------------------
 with pd.ExcelWriter(
         file_path,
         engine="openpyxl",
         mode="a",
-        if_sheet_exists="overlay"  # 覆盖模式：保留表头，从第二行写入
+        if_sheet_exists="overlay"
 ) as writer:
-    # 写入时指定起始行=1（openpyxl中行索引从0开始，1对应Excel的第二行）
     df_target.to_excel(
         writer,
         sheet_name="实验记录",
         index=False,
-        header=False,  # 不重复写入表头
-        startrow=1  # 从第二行开始写入数据
+        header=False,
+        startrow=1
     )
 
-print("✅ 操作完成！已清空实验记录旧数据，新数据已写入（保留表头）。")
+print("✅ 操作完成！")
+print("📌 核心变更：“使用设备”列仅包含“使用中设备名称”，无设备通道内容；其他格式要求均已满足。")
