@@ -14,7 +14,6 @@ LAB_RECORD_FILE = r"E:\System\pic\A报告\老化实验记录.xlsx"  # 老化实�
 SHEET_MAPPING = {
     "Fb": "B12",  # 源文件的Fb工作表数据复制到目标文件第一个工作表的B12起始
     "ACR": "D12",  # 源文件的ACR工作表数据复制到目标文件第一个工作表的D12起始
-
     "SPL": "F12",  # 源文件的SPL工作表数据复制到目标文件第一个工作表的F12起始
     "THD": "H12"  # 源文件的THD工作表数据复制到目标文件第一个工作表的H12起始
 }
@@ -181,8 +180,38 @@ def find_config_file(report_id):
         return None
 
 
+def get_used_range(ws):
+    """获取工作表的实际使用范围（非空单元格范围）"""
+    min_row = ws.max_row
+    max_row = 1
+    min_col = ws.max_column
+    max_col = 1
+
+    for row in ws.iter_rows():
+        for cell in row:
+            if cell.value is not None:
+                if cell.row < min_row:
+                    min_row = cell.row
+                if cell.row > max_row:
+                    max_row = cell.row
+                if cell.column < min_col:
+                    min_col = cell.column
+                if cell.column > max_col:
+                    max_col = cell.column
+
+    # 如果没有找到任何数据，返回默认值
+    if min_row > max_row:
+        min_row = 1
+        max_row = 0
+    if min_col > max_col:
+        min_col = 1
+        max_col = 0
+
+    return min_row, max_row, min_col, max_col
+
+
 def copy_sheet_data(source_wb, source_sheet_name, target_wb, start_cell):
-    """将源工作表的全部数据复制到目标工作簿的第一个工作表的指定位置"""
+    """将源工作表的非空数据复制到目标工作簿的第一个工作表的指定位置"""
     # 检查源工作表是否存在
     if source_sheet_name not in source_wb:
         print(f"源文件中不存在工作表: {source_sheet_name}")
@@ -190,45 +219,82 @@ def copy_sheet_data(source_wb, source_sheet_name, target_wb, start_cell):
 
     # 获取目标工作簿的第一个工作表
     target_ws = target_wb.active
-
     source_ws = source_wb[source_sheet_name]
 
     # 解析起始单元格（例如：B12 -> 列索引=2, 行索引=12）
     start_col_letter = start_cell[0]
     start_row = int(start_cell[1:])
+    start_col = ord(start_col_letter) - 64  # ASCII值减去64 (A=1, B=2...)
 
-    # 将列字母转换为数字索引（A=1, B=2, ...）
-    start_col = ord(start_col_letter) - 64  # ASCII值减去64
+    # 获取源工作表的实际使用范围（只处理有数据的单元格）
+    min_row, max_row, min_col, max_col = get_used_range(source_ws)
 
-    # 获取源工作表的最大行和列
-    max_row = source_ws.max_row
-    max_col = source_ws.max_column
+    if max_row == 0 or max_col == 0:
+        print(f"工作表 '{source_sheet_name}' 没有可复制的非空数据")
+        return
 
     print(f"从源文件复制工作表 '{source_sheet_name}' 数据到目标文件的第一个工作表，起始位置: {start_cell}")
-    print(f"源数据范围: 1-{max_row}行, A-{get_column_letter(max_col)}列")
+    print(f"源数据实际使用范围: {min_row}-{max_row}行, {get_column_letter(min_col)}-{get_column_letter(max_col)}列")
 
-    # 复制数据
-    for row_idx in range(1, max_row + 1):
-        for col_idx in range(1, max_col + 1):
-            # 计算目标单元格位置
-            target_row = start_row + row_idx - 1
-            target_col = start_col + col_idx - 1
-
-            # 获取源单元格的值
+    # 复制非空数据
+    copied_count = 0
+    for row_idx in range(min_row, max_row + 1):
+        for col_idx in range(min_col, max_col + 1):
+            # 获取源单元格
             source_cell = source_ws.cell(row=row_idx, column=col_idx)
+
+            # 跳过空值单元格
             value = source_cell.value
+            if value is None or value == "":
+                continue
+
+            # 计算目标单元格位置
+            target_row = start_row + (row_idx - min_row)
+            target_col = start_col + (col_idx - min_col)
 
             # 对数值类型的数据保留三位小数
             if isinstance(value, (int, float)):
-                # 使用Python的格式化字符串保留三位小数
                 value = round(value, 3)
                 # 设置Excel单元格的数字格式为三位小数
                 target_ws.cell(row=target_row, column=target_col).number_format = '0.000'
 
-            # 获取目标单元格并设置值
+            # 写入目标单元格
             target_ws.cell(row=target_row, column=target_col).value = value
+            copied_count += 1
 
-    print(f"成功复制 {max_row} 行 {max_col} 列数据到起始位置 {start_cell}")
+    print(f"成功复制 {copied_count} 个非空单元格数据到起始位置 {start_cell}")
+
+
+def save_merge_ranges(ws):
+    """记录工作表中所有合并单元格的范围，返回合并区域列表"""
+    merge_ranges = []
+    # 遍历所有合并单元格区域
+    for merged_range in ws.merged_cells.ranges:
+        # 保存合并区域的坐标字符串（如 "A1:B5"）
+        merge_ranges.append(str(merged_range))
+    print(f"记录到 {len(merge_ranges)} 个合并单元格区域")
+    return merge_ranges
+
+
+def unmerge_all_cells(ws):
+    """解除工作表中所有的合并单元格"""
+    # 先复制合并区域列表（避免遍历时修改原列表）
+    merge_ranges = list(ws.merged_cells.ranges)
+    for merged_range in merge_ranges:
+        ws.unmerge_cells(str(merged_range))
+    print("已解除所有合并单元格")
+
+
+def restore_merge_ranges(ws, merge_ranges):
+    """恢复工作表的合并单元格结构"""
+    restored_count = 0
+    for merge_range in merge_ranges:
+        try:
+            ws.merge_cells(merge_range)
+            restored_count += 1
+        except Exception as e:
+            print(f"恢复合并区域 {merge_range} 失败: {e}")
+    print(f"成功恢复 {restored_count}/{len(merge_ranges)} 个合并单元格区域")
 
 
 def write_to_excel(file_path, cell_data):
@@ -239,11 +305,19 @@ def write_to_excel(file_path, cell_data):
 
         # 加载目标工作簿
         target_wb = load_workbook(file_path)
-
-        # 写入固定数据
         target_ws = target_wb.active
+
+        # ========== 核心流程：处理合并单元格 ==========
+        # 1. 记录所有合并区域
+        merge_ranges = save_merge_ranges(target_ws)
+
+        # 2. 解除全部合并
+        unmerge_all_cells(target_ws)
+
+        # 3. 写入固定数据（此时所有单元格都是独立的，可以正常写入）
         for cell, value in cell_data.items():
             target_ws[cell] = value
+            print(f"写入单元格 {cell}: {value}")
 
             # 跳过B9单元格的解析
             if cell == "B9":
@@ -261,8 +335,6 @@ def write_to_excel(file_path, cell_data):
                 else:
                     range_str = f"{min_val}~{max_val}"
                 target_ws[f"{next_col_letter}{row}"] = range_str
-
-                # 在控制台打印解析的范围
                 print(f"单元格 {cell}: {value} -> 范围: {range_str}")
             else:
                 # 处理无法解析的数值类型
@@ -274,9 +346,13 @@ def write_to_excel(file_path, cell_data):
             print(f"\n开始复制工作表 '{source_sheet_name}' 到 {start_cell}")
             copy_sheet_data(source_wb, source_sheet_name, target_wb, start_cell)
 
-        # 直接保存并覆盖原文件
+        # 4. 恢复原始合并结构
+        restore_merge_ranges(target_ws, merge_ranges)
+
+        # 保存文件
         target_wb.save(file_path)
-        print(f"成功写入数据到 {file_path}")
+        print(f"\n成功写入数据到 {file_path}")
+
     except Exception as e:
         print(f"处理文件 {file_path} 时出错: {e}")
 
@@ -325,7 +401,7 @@ def main():
 
     # 处理每个Excel文件
     for file in excel_files:
-        print(f"\n处理文件: {file}")
+        print(f"\n========== 处理文件: {file} ==========")
         write_to_excel(file, cell_data)
 
 
