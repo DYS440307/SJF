@@ -224,7 +224,8 @@ class Config:
 # ===== 功能函数 =====
 def generate_random_numbers(existing_values, value_range, ensure_first_larger=False):
     """
-    生成两个不重复的随机数，可配置确保第一个数大于第二个数
+    生成两个不重复的三位小数随机数，可配置确保第一个数大于第二个数
+    优化：强制三位小数，但随机有效位数，避免末尾全0（如6.400→6.410/5.807等）
 
     参数:
         existing_values (set): 已存在的值集合，用于避免重复
@@ -232,34 +233,51 @@ def generate_random_numbers(existing_values, value_range, ensure_first_larger=Fa
         ensure_first_larger (bool): 是否确保第一个数大于第二个数
 
     返回:
-        tuple: 两个不重复的随机数
+        tuple: 两个不重复的三位小数随机数
     """
     min_val, max_val, min_diff = value_range
-    max_attempts = 100
+    max_attempts = 200  # 增加尝试次数，适配三位小数规则
 
     for _ in range(max_attempts):
-        # 生成两个随机数
-        value1 = round(secrets.SystemRandom().uniform(min_val, max_val), 3)
-        value2 = round(secrets.SystemRandom().uniform(min_val, max_val), 3)
+        # 1. 生成基础随机数（保留更多小数位）
+        raw_value1 = secrets.SystemRandom().uniform(min_val, max_val)
+        raw_value2 = secrets.SystemRandom().uniform(min_val, max_val)
 
-        # 确保两个数的差值符合要求
+        # 2. 强制保留三位小数（核心要求），但通过随机微调避免末尾全0
+        # 生成0-999的随机尾数，确保三位小数且不全为0
+        tail1 = secrets.SystemRandom().randint(1, 999)  # 避免000
+        tail2 = secrets.SystemRandom().randint(1, 999)
+        # 重新计算为三位小数的数值
+        integer_part1 = int(raw_value1)
+        decimal_part1 = tail1 / 1000
+        value1 = round(integer_part1 + decimal_part1, 3)
+
+        integer_part2 = int(raw_value2)
+        decimal_part2 = tail2 / 1000
+        value2 = round(integer_part2 + decimal_part2, 3)
+
+        # 3. 确保数值在配置范围内
+        if not (min_val <= value1 <= max_val and min_val <= value2 <= max_val):
+            continue
+
+        # 4. 确保两个数的差值符合要求
         if abs(value1 - value2) < min_diff:
             continue
 
-        # 如果需要确保第一个数大于第二个数
+        # 5. 如果需要确保第一个数大于第二个数
         if ensure_first_larger and value1 <= value2:
             value1, value2 = value2, value1  # 交换值
 
-        # 检查是否有重复
+        # 6. 检查是否有重复
         if value1 not in existing_values and value2 not in existing_values:
             return value1, value2
 
-    raise Exception("无法在100次尝试内生成不重复的随机数")
+    raise Exception("无法在200次尝试内生成不重复的三位小数随机数")
 
 
 def process_excel_file(file_path, output_dir, order_date, order_number, material_code, config):
     """
-    处理单个Excel文件：填充随机数并转换为PDF
+    处理单个Excel文件：填充三位小数随机数（行级波动+无末尾全0）并转换为PDF
 
     参数:
         file_path (str): 源Excel文件路径
@@ -298,30 +316,54 @@ def process_excel_file(file_path, output_dir, order_date, order_number, material
             # 初始化变量，避免NameError
             value_b, value_c, value_d, value_e, value_f, value_g, value_h, value_i = None, None, None, None, None, None, None, None
 
-            max_attempts = 100  # 最大尝试次数
+            # ========== 核心优化：行级别的随机范围调整 ==========
+            row_range_config = {}
+            # 为不同列定义不同的波动范围（更贴近真实数据）
+            col_fluctuation = {
+                'B_C': (0.98, 1.02),  # B/C列 ±2% 波动
+                'D_E': (0.97, 1.03),  # D/E列 ±3% 波动
+                'F_G': (0.99, 1.01),  # F/G列 ±1% 波动
+                'H_I': (0.96, 1.04)  # H/I列 ±4% 波动
+            }
+            for key, (min_val, max_val, min_diff) in config.RANGE_CONFIG.items():
+                # 按列获取专属的波动比例
+                min_ratio, max_ratio = col_fluctuation.get(key, (0.98, 1.02))
+                adjust_ratio = secrets.SystemRandom().uniform(min_ratio, max_ratio)
+                # 调整最小值和最大值
+                adjusted_min = min_val * adjust_ratio
+                adjusted_max = max_val * adjust_ratio
+                # 确保调整后的范围不会反转（最小值 < 最大值）
+                if adjusted_min >= adjusted_max:
+                    adjusted_min = min_val * 0.99
+                    adjusted_max = max_val * 1.01
+                # 保存当前行的专属范围配置
+                row_range_config[key] = (adjusted_min, adjusted_max, min_diff)
+            # ==================================================
+
+            max_attempts = 200  # 最大尝试次数
             for attempt in range(max_attempts):
                 # 临时集合，用于验证当前尝试的所有值
                 temp_values = set(existing_values)
 
-                # 生成所有列值
+                # 生成所有列值（使用行专属范围+三位小数规则）
                 try:
                     # B列和C列（C < B）
-                    value_b, value_c = generate_random_numbers(temp_values, config.RANGE_CONFIG['B_C'],
+                    value_b, value_c = generate_random_numbers(temp_values, row_range_config['B_C'],
                                                                ensure_first_larger=True)
                     temp_values.update([value_b, value_c])
 
                     # D列和E列（E > D）
-                    value_d, value_e = generate_random_numbers(temp_values, config.RANGE_CONFIG['D_E'],
+                    value_d, value_e = generate_random_numbers(temp_values, row_range_config['D_E'],
                                                                ensure_first_larger=False)
                     temp_values.update([value_d, value_e])
 
                     # F列和G列（G < F）
-                    value_f, value_g = generate_random_numbers(temp_values, config.RANGE_CONFIG['F_G'],
+                    value_f, value_g = generate_random_numbers(temp_values, row_range_config['F_G'],
                                                                ensure_first_larger=True)
                     temp_values.update([value_f, value_g])
 
                     # H列和I列（I > H）
-                    value_h, value_i = generate_random_numbers(temp_values, config.RANGE_CONFIG['H_I'],
+                    value_h, value_i = generate_random_numbers(temp_values, row_range_config['H_I'],
                                                                ensure_first_larger=False)
                     temp_values.update([value_h, value_i])
 
@@ -341,15 +383,23 @@ def process_excel_file(file_path, output_dir, order_date, order_number, material
                 if attempt == max_attempts - 1:
                     raise Exception(f"行 {row}: 无法在{max_attempts}次尝试内生成满足所有条件的随机数")
 
-            # 写入数据到对应单元格
-            sheet[f'B{row}'] = value_b  # B列值（较大值）
-            sheet[f'C{row}'] = value_c  # C列值（较小值）
-            sheet[f'D{row}'] = value_d  # D列值（较小值）
-            sheet[f'E{row}'] = value_e  # E列值（较大值）
-            sheet[f'F{row}'] = value_f  # F列值（较大值）
-            sheet[f'G{row}'] = value_g  # G列值（较小值）
-            sheet[f'H{row}'] = value_h  # H列值（较小值）
-            sheet[f'I{row}'] = value_i  # I列值（较大值）
+            # 写入数据到对应单元格 + 设置三位小数格式（强制保留三位）
+            sheet[f'B{row}'] = value_b
+            sheet[f'B{row}'].number_format = '0.000'  # 强制三位小数
+            sheet[f'C{row}'] = value_c
+            sheet[f'C{row}'].number_format = '0.000'
+            sheet[f'D{row}'] = value_d
+            sheet[f'D{row}'].number_format = '0.000'
+            sheet[f'E{row}'] = value_e
+            sheet[f'E{row}'].number_format = '0.000'
+            sheet[f'F{row}'] = value_f
+            sheet[f'F{row}'].number_format = '0.000'
+            sheet[f'G{row}'] = value_g
+            sheet[f'G{row}'].number_format = '0.000'
+            sheet[f'H{row}'] = value_h
+            sheet[f'H{row}'].number_format = '0.000'
+            sheet[f'I{row}'] = value_i
+            sheet[f'I{row}'].number_format = '0.000'
 
             # 更新已存在的值集合
             existing_values.update([value_b, value_c, value_d, value_e, value_f, value_g, value_h, value_i])
@@ -809,4 +859,4 @@ def get_unique_material_codes():
 
 
 if __name__ == "__main__":
-    main()    
+    main()
