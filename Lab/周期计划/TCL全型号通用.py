@@ -340,7 +340,7 @@ def process_excel_file(file_path, output_dir, order_date, order_number, material
                 row_range_config[key] = (adjusted_min, adjusted_max, min_diff)
             # ==================================================
 
-            max_attempts = 200  # 最大尝试次数
+            max_attempts = 800  # 最大尝试次数
             for attempt in range(max_attempts):
                 # 临时集合，用于验证当前尝试的所有值
                 temp_values = set(existing_values)
