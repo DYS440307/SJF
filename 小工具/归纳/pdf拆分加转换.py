@@ -1,39 +1,66 @@
 import fitz  # PyMuPDF
 from pathlib import Path
+import multiprocessing as mp
+import sys
+import os
 
 # ================== 参数区 ==================
-PDF_DIR = Path(r"E:\System\download\新建文件夹")
-OUT_DIR = PDF_DIR / "png_output"
-
-DPI = 300  # 300=高清打印级，200=普通高清，400+=超高清
+DEFAULT_DPI = 300
+ROTATE_THRESHOLD = 1.1  # 防误判系数（高度 > 宽度 * 1.1 才旋转）
+MAX_WORKERS = max(1, mp.cpu_count() - 1)
 # ===========================================
 
-def pdf_to_png(pdf_path: Path, out_base: Path, dpi: int = 400):
+
+def pdf_to_png_single(pdf_path: Path, out_base: Path, dpi: int):
     """
-    将 PDF 每一页转换为高质量 PNG
+    单个 PDF 处理（用于多进程）
     """
-    zoom = dpi / 72  # PyMuPDF 基准 DPI 是 72
-    matrix = fitz.Matrix(zoom, zoom)
+    try:
+        zoom = dpi / 72
+        doc = fitz.open(pdf_path)
 
-    doc = fitz.open(pdf_path)
+        pdf_name = pdf_path.stem
+        pdf_out_dir = out_base / pdf_name
+        pdf_out_dir.mkdir(parents=True, exist_ok=True)
 
-    pdf_name = pdf_path.stem
-    pdf_out_dir = out_base / pdf_name
-    pdf_out_dir.mkdir(parents=True, exist_ok=True)
+        for page_index in range(len(doc)):
+            page = doc[page_index]
 
-    for page_index in range(len(doc)):
-        page = doc[page_index]
-        pix = page.get_pixmap(matrix=matrix, alpha=False)
+            # ===== 获取页面尺寸 =====
+            rect = page.rect
+            width = rect.width
+            height = rect.height
 
-        out_png = pdf_out_dir / f"{pdf_name}_page_{page_index + 1}.png"
-        pix.save(out_png)
+            # ===== 判断是否旋转 =====
+            if height > width * ROTATE_THRESHOLD:
+                matrix = fitz.Matrix(zoom, zoom).prerotate(-90)
+                rotate_flag = "旋转90°"
+            else:
+                matrix = fitz.Matrix(zoom, zoom)
+                rotate_flag = "未旋转"
 
-        print(f"已生成: {out_png}")
+            # ===== 渲染 =====
+            pix = page.get_pixmap(matrix=matrix, alpha=False)
 
-    doc.close()
+            out_png = pdf_out_dir / f"{pdf_name}_page_{page_index + 1}.png"
+            pix.save(out_png)
+
+        doc.close()
+        return f"完成: {pdf_path.name}"
+
+    except Exception as e:
+        return f"失败: {pdf_path.name} | 错误: {e}"
 
 
-def batch_process(pdf_dir: Path, out_dir: Path, dpi: int):
+def batch_process(pdf_dir: Path, dpi: int):
+    """
+    多进程批量处理
+    """
+    if not pdf_dir.exists():
+        print("路径不存在")
+        return
+
+    out_dir = pdf_dir / "png_output"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     pdf_files = list(pdf_dir.glob("*.pdf"))
@@ -41,12 +68,35 @@ def batch_process(pdf_dir: Path, out_dir: Path, dpi: int):
         print("未找到 PDF 文件")
         return
 
-    for pdf_file in pdf_files:
-        print(f"\n正在处理: {pdf_file}")
-        pdf_to_png(pdf_file, out_dir, dpi)
+    print(f"检测到 {len(pdf_files)} 个 PDF，开始处理...")
+    print(f"使用进程数: {MAX_WORKERS}\n")
+
+    # ===== 多进程 =====
+    with mp.Pool(processes=MAX_WORKERS) as pool:
+        results = [
+            pool.apply_async(pdf_to_png_single, (pdf, out_dir, dpi))
+            for pdf in pdf_files
+        ]
+
+        for r in results:
+            print(r.get())
 
     print("\n全部处理完成")
 
 
+def get_input_path():
+    """
+    支持拖拽文件夹
+    """
+    if len(sys.argv) > 1:
+        return Path(sys.argv[1].strip('"'))
+
+    user_input = input("请输入PDF文件夹路径（或直接拖入）：").strip().strip('"')
+    return Path(user_input)
+
+
 if __name__ == "__main__":
-    batch_process(PDF_DIR, OUT_DIR, DPI)
+    mp.freeze_support()  # Windows必须
+
+    pdf_dir = get_input_path()
+    batch_process(pdf_dir, DEFAULT_DPI)
