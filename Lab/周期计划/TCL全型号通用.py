@@ -18,15 +18,6 @@ class Config:
     # PDF输出配置
     PDF_OUTPUT_DIR = os.path.join(OUTPUT_DIR, "PDF输出")
 
-    # 处理模式配置
-    PROCESS_MODE = {
-        'large_quantity': False,  # 处理实发数量>QUANTITY_THRESHOLD的单据
-        'closest_small_quantity': True  # 处理最近且实发数量<QUANTITY_THRESHOLD的单据
-    }
-
-    # 实发数量阈值配置
-    QUANTITY_THRESHOLD = 200
-
     # 动态查找的路径
     SOURCE_DIR = None
     CONFIG_FILE = None
@@ -474,216 +465,67 @@ def excel_to_pdf(excel_path, pdf_path):
 
 def get_input_pairs(config, target_material_code):
     """
-    从销售明细Excel文件中获取指定物料编码的单据对
-    根据配置决定获取实发数量>6000的所有单据还是最近且实发数量<6000的单据
+    从销售明细Excel文件中获取【所有】指定物料编码的单据
+    无任何数量限制，直接全量处理
+    """
+    return get_all_pairs(config, target_material_code)
 
-    参数:
-        config (Config): 配置对象
-        target_material_code (str): 目标物料编码
 
-    返回:
-        list: 包含元组 (日期, 订单编号, 物料编码) 的列表
+def get_all_pairs(config, target_material_code):
+    """
+    获取【所有】匹配物料编码的单据，无实发数量判定
     """
     pairs = []
-
-    if config.PROCESS_MODE['large_quantity']:
-        # 获取所有实发数量>阈值的单据
-        pairs.extend(get_large_quantity_pairs(config, target_material_code))
-
-    if config.PROCESS_MODE['closest_small_quantity']:
-        # 获取最近且实发数量<阈值的单据
-        closest_pair = get_closest_small_quantity_pair(config, target_material_code)
-        if closest_pair:
-            pairs.append(closest_pair)
-
-    return pairs
-
-
-def get_large_quantity_pairs(config, target_material_code):
-    """
-    获取指定物料编码且实发数量>阈值的所有单据
-
-    参数:
-        config (Config): 配置对象
-        target_material_code (str): 目标物料编码
-
-    返回:
-        list: 包含元组 (日期, 订单编号, 物料编码) 的列表
-    """
-    pairs = []
-
     try:
         if not os.path.exists(config.SALES_DETAIL_FILE):
             raise FileNotFoundError(f"销售明细文件不存在 - {config.SALES_DETAIL_FILE}")
 
-        # 打开销售明细Excel文件
         workbook = openpyxl.load_workbook(config.SALES_DETAIL_FILE, data_only=True)
         sheet = workbook.active
 
-        # 获取表头行，确定各列索引
+        # 获取表头列索引
         header_row = next(sheet.iter_rows(min_row=1, max_row=1, values_only=True))
-        date_col = None
-        order_col = None
-        material_col = None
-        quantity_col = None
-
-        # 查找各列对应的索引
+        date_col = order_col = material_col = None
         for idx, cell_value in enumerate(header_row):
-            if cell_value is None:
+            if not cell_value:
                 continue
-            cell_value = str(cell_value).strip().lower()
-            if '日期' in cell_value:
+            cell_val = str(cell_value).strip().lower()
+            if '日期' in cell_val:
                 date_col = idx
-            elif '单据编号' in cell_value:
+            elif '单据编号' in cell_val:
                 order_col = idx
-            elif '物料编码' in cell_value:
+            elif '物料编码' in cell_val:
                 material_col = idx
-            elif '实发数量' in cell_value:
-                quantity_col = idx
 
-        # 检查是否找到了所有需要的列
-        if any(col is None for col in [date_col, order_col, material_col, quantity_col]):
-            missing = [col_name for col_name, col_idx in
-                       [('日期', date_col), ('单据编号', order_col), ('物料编码', material_col),
-                        ('实发数量', quantity_col)]
-                       if col_idx is None]
-            raise ValueError(f"在销售明细文件中找不到以下列: {', '.join(missing)}")
+        # 校验列
+        if any(col is None for col in [date_col, order_col, material_col]):
+            raise ValueError("销售明细缺少 日期/单据编号/物料编码 列")
 
-        # 从第二行开始遍历数据行
-        processed_orders = set()  # 用于记录已处理的订单编号，避免重复
+        # 遍历所有行，收集匹配物料的单据
+        processed_orders = set()
         for row in sheet.iter_rows(min_row=2, values_only=True):
-            # 跳过空行
             if not any(row):
                 continue
 
-            # 获取各列值
             order_date = row[date_col]
             order_number = row[order_col]
             material_code = row[material_col]
-            # 实发数量需要转换为数值类型
-            try:
-                quantity = float(row[quantity_col]) if row[quantity_col] is not None else 0
-            except (ValueError, TypeError):
-                continue
 
-            # 检查条件：物料编码匹配、实发数量 > 阈值 且订单编号未处理过
-            if (str(material_code) == target_material_code and
-                    quantity > config.QUANTITY_THRESHOLD and
-                    order_number not in processed_orders):
-                # 处理日期格式
+            # 仅匹配物料编码，无数量判断
+            if str(material_code) == target_material_code and order_number not in processed_orders:
                 formatted_date = format_date(order_date)
                 if formatted_date:
                     pairs.append((formatted_date, order_number, material_code))
                     processed_orders.add(order_number)
-                    print(f"已添加: {formatted_date} {order_number} (物料编码: {material_code}, 实发数量: {quantity})")
+                    print(f"已添加单据: {formatted_date} {order_number} (物料编码: {material_code})")
 
         workbook.close()
-        print(
-            f"从销售明细文件中提取了 {len(pairs)} 个物料编码为 {target_material_code} 且实发数量大于{config.QUANTITY_THRESHOLD}的订单")
-
+        print(f"共提取 {len(pairs)} 个物料编码为 {target_material_code} 的全部订单")
         return pairs
 
     except Exception as e:
-        print(f"获取大数量单据时出错: {e}")
+        print(f"获取单据时出错: {e}")
         return pairs
-
-
-def get_closest_small_quantity_pair(config, target_material_code):
-    """
-    获取距离今日最近且物料编码匹配、实发数量<阈值的单据
-
-    参数:
-        config (Config): 配置对象
-        target_material_code (str): 目标物料编码
-
-    返回:
-        tuple: (日期, 订单编号, 物料编码) 或 None
-    """
-    today = datetime.now().date()
-    closest_record = None
-    min_days_diff = float('inf')
-
-    try:
-        if not os.path.exists(config.SALES_DETAIL_FILE):
-            raise FileNotFoundError(f"销售明细文件不存在 - {config.SALES_DETAIL_FILE}")
-
-        # 打开销售明细Excel文件
-        workbook = openpyxl.load_workbook(config.SALES_DETAIL_FILE, data_only=True)
-        sheet = workbook.active
-
-        # 获取表头行，确定各列索引
-        header_row = next(sheet.iter_rows(min_row=1, max_row=1, values_only=True))
-        date_col = None
-        order_col = None
-        material_col = None
-        quantity_col = None
-
-        # 查找各列对应的索引
-        for idx, cell_value in enumerate(header_row):
-            if cell_value is None:
-                continue
-            cell_value = str(cell_value).strip().lower()
-            if '日期' in cell_value:
-                date_col = idx
-            elif '单据编号' in cell_value:
-                order_col = idx
-            elif '物料编码' in cell_value:
-                material_col = idx
-            elif '实发数量' in cell_value:
-                quantity_col = idx
-
-        # 检查是否找到了所有需要的列
-        if any(col is None for col in [date_col, order_col, material_col, quantity_col]):
-            missing = [col_name for col_name, col_idx in
-                       [('日期', date_col), ('单据编号', order_col), ('物料编码', material_col),
-                        ('实发数量', quantity_col)]
-                       if col_idx is None]
-            raise ValueError(f"在销售明细文件中找不到以下列: {', '.join(missing)}")
-
-        # 从第二行开始遍历数据行
-        for row in sheet.iter_rows(min_row=2, values_only=True):
-            # 跳过空行
-            if not any(row):
-                continue
-
-            # 获取各列值
-            order_date = row[date_col]
-            order_number = row[order_col]
-            material_code = row[material_col]
-            # 实发数量需要转换为数值类型
-            try:
-                quantity = float(row[quantity_col]) if row[quantity_col] is not None else 0
-            except (ValueError, TypeError):
-                continue
-
-            # 检查条件：物料编码匹配、实发数量 < 阈值
-            if str(material_code) == target_material_code and quantity < config.QUANTITY_THRESHOLD:
-                # 处理日期格式
-                date_obj = parse_date(order_date)
-                if date_obj:
-                    # 计算与今日的天数差
-                    days_diff = abs((date_obj - today).days)
-
-                    # 如果是更接近的日期，更新最近记录
-                    if days_diff < min_days_diff:
-                        min_days_diff = days_diff
-                        closest_record = (date_obj, order_number, material_code, quantity)
-
-        workbook.close()
-
-        if closest_record:
-            # 格式化日期为 YYYY/M/D
-            formatted_date = f"{closest_record[0].year}/{closest_record[0].month}/{closest_record[0].day}"
-            print(
-                f"找到最近的物料编码为 {target_material_code} 且实发数量小于{config.QUANTITY_THRESHOLD}的单据: {formatted_date} {closest_record[1]}，距离今日 {min_days_diff} 天，实发数量: {closest_record[3]}")
-            return (formatted_date, closest_record[1], closest_record[2])
-        else:
-            print(f"未找到物料编码为 {target_material_code} 且实发数量小于{config.QUANTITY_THRESHOLD}的单据")
-            return None
-
-    except Exception as e:
-        print(f"获取小数量单据时出错: {e}")
-        return None
 
 
 def format_date(date_value):
@@ -720,12 +562,6 @@ def parse_date(date_value):
 def get_excel_files(config):
     """
     根据配置获取符合条件的Excel文件列表
-
-    参数:
-        config (Config): 配置对象
-
-    返回:
-        list: 符合条件的文件路径列表
     """
     excel_files = []
     if not os.path.exists(config.SOURCE_DIR):
@@ -759,7 +595,7 @@ def main():
 
         # 为每种物料编码处理相应的订单
         for material_code in material_codes:
-            print(f"\n\n===== 处理物料编码 {material_code} 的订单 =====")
+            print(f"\n\n===== 处理物料编码 {material_code} 的全部订单 =====")
 
             # 创建对应物料编码的配置实例
             config = Config(material_code)
@@ -770,14 +606,11 @@ def main():
             print(f"  PDF输出目录: {config.PDF_OUTPUT_DIR}")
             print(f"  销售明细文件: {config.SALES_DETAIL_FILE}")
             print(f"  配置文件: {config.CONFIG_FILE}")
-            print(f"  实发数量阈值: {config.QUANTITY_THRESHOLD}")
-            print(
-                f"  处理模式: 实发数量>{config.QUANTITY_THRESHOLD}的单据{'✓' if config.PROCESS_MODE['large_quantity'] else '✗'}, 最近且实发数量<{config.QUANTITY_THRESHOLD}的单据{'✓' if config.PROCESS_MODE['closest_small_quantity'] else '✗'}")
 
-            # 从销售明细Excel文件获取该物料编码的单据对
+            # 获取该物料编码的【所有】单据
             input_pairs = get_input_pairs(config, material_code)
             if not input_pairs:
-                print(f"未找到物料编码为 {material_code} 的符合条件的数据，跳过处理")
+                print(f"未找到物料编码为 {material_code} 的单据，跳过处理")
                 continue
 
             # 获取符合条件的Excel文件
@@ -838,7 +671,6 @@ def get_unique_material_codes():
         # 从第二行开始遍历数据行，收集所有不同的物料编码
         material_codes = set()
         for row in sheet.iter_rows(min_row=2, values_only=True):
-            # 跳过空行
             if not any(row):
                 continue
 

@@ -4,7 +4,7 @@ from PyPDF2 import PdfMerger
 import win32com.client
 
 # ================== 配置 ==================
-source_dir = r"E:\System\desktop\PY\实验室"
+source_dir = r"E:\System\desktop\PY\实验室\310100265\2026年3月"
 output_dir = r"E:\System\desktop\PY\实验室\PDF"
 # ========================================
 
