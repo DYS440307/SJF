@@ -1,61 +1,114 @@
 import os
 from openpyxl import load_workbook
+from openpyxl.utils import range_boundaries
 
-def batch_modify_or_check_excel():
-    print("=== Excel 批量工具：修改 / 核查单元格 ===")
-    print("1. 批量修改指定单元格内容")
-    print("2. 批量核查指定单元格内容\n")
+# --------------------------
+# 【批量核查：支持 单个单元格 / 区域范围】
+# --------------------------
+def batch_check_fast_compare():
+    print("=== Excel 快速对比工具 ===")
+    folder_path = input("请输入Excel文件夹路径：").strip()
 
-    # 选择模式
-    mode = input("请选择功能（输入 1 或 2）：").strip()
-    if mode not in ["1", "2"]:
-        print("错误：请输入正确的数字 1 或 2！")
-        return
-
-    # 统一获取输入
-    folder_path = input("\n请输入Excel所在文件夹路径：").strip()
-    target_cell = input("请输入要操作的单元格（例如 A1、B3）：").strip()
-
-    # 检查文件夹
     if not os.path.isdir(folder_path):
-        print("错误：文件夹路径不存在！")
+        print("❌ 文件夹不存在！")
         return
 
-    excel_count = 0
-    success_count = 0
+    # 用户可自由输入：单个单元格（A1）或 范围（A2:L4）
+    target_area = input("请输入要对比的单元格/区域（如 A1 或 A2:L4）：").strip()
 
-    print("\n========================================")
+    try:
+        min_col, min_row, max_col, max_row = range_boundaries(target_area)
+    except:
+        print("❌ 区域格式错误！")
+        return
+
+    all_files_data = []
+    file_names = []
+
+    print("\n正在读取文件...")
+
+    # 遍历读取所有Excel
     for filename in os.listdir(folder_path):
         if filename.lower().endswith(".xlsx"):
-            excel_count += 1
             file_path = os.path.join(folder_path, filename)
-
             try:
-                wb = load_workbook(file_path, read_only=(mode == "2"))  # 核查时只读打开，更快
+                wb = load_workbook(file_path, read_only=True, data_only=True)
                 ws = wb.active
 
-                if mode == "1":
-                    # ========== 模式1：修改 ==========
-                    new_content = input("\n请输入单元格新内容：")
-                    ws[target_cell] = new_content
-                    wb.save(file_path)
-                    print(f"✅ 已修改：{filename} | {target_cell} = {new_content}")
-
-                else:
-                    # ========== 模式2：核查 ==========
-                    cell_value = ws[target_cell].value
-                    print(f"📄 {filename} | {target_cell} = {cell_value}")
+                file_data = []
+                for row in ws.iter_rows(min_row=min_row, max_row=max_row,
+                                        min_col=min_col, max_col=max_col):
+                    row_values = [str(cell.value) if cell.value is not None else "" for cell in row]
+                    file_data.append(row_values)
 
                 wb.close()
-                success_count += 1
+                all_files_data.append(file_data)
+                file_names.append(filename)
+                print(f"✅ {filename}")
 
             except Exception as e:
-                print(f"❌ 处理失败：{filename}，原因：{str(e)}")
+                print(f"❌ 读取失败：{filename} | {e}")
 
-    print("\n========================================")
-    print(f"总Excel文件：{excel_count} 个")
-    print(f"成功处理：{success_count} 个")
-    print("任务完成！")
+    if not all_files_data:
+        print("\n未找到Excel文件")
+        return
 
+    # --------------------------
+    # 【清晰对比展示：完整显示，不截断】
+    # --------------------------
+    print("\n" + "=" * 160)
+    print(f"📊 对比区域：{target_area}")
+    print(f"文件总数：{len(file_names)}")
+    print("=" * 160)
+
+    for row_idx in range(len(all_files_data[0])):
+        current_row = min_row + row_idx
+        print(f"\n📌 第 {current_row} 行 对比")
+        print("-" * 160)
+
+        for file_idx, data in enumerate(all_files_data):
+            fname = f"[{file_names[file_idx]:<25}]"
+            line = " | ".join(data[row_idx])
+            print(f"{fname} {line}")
+
+    print("\n" + "=" * 160)
+    print("✅ 对比完成！所有内容完整显示，可直接肉眼对比")
+
+# --------------------------
+# 【批量修改单个单元格】
+# --------------------------
+def batch_modify_cell():
+    print("\n=== 批量修改单个单元格 ===")
+    folder_path = input("文件夹路径：").strip()
+    cell = input("要修改的单元格（如 A1）：").strip()
+    new_val = input("新内容：").strip()
+
+    count = 0
+    for f in os.listdir(folder_path):
+        if f.lower().endswith(".xlsx"):
+            try:
+                file_path = os.path.join(folder_path, f)
+                wb = load_workbook(file_path)
+                wb.active[cell] = new_val
+                wb.save(file_path)
+                wb.close()
+                count += 1
+            except:
+                pass
+    print(f"\n✅ 修改完成！共处理 {count} 个文件")
+
+# --------------------------
+# 主菜单
+# --------------------------
 if __name__ == "__main__":
-    batch_modify_or_check_excel()
+    print("请选择功能：")
+    print("1 → 【核查对比】支持单个单元格 / 区域范围（A2:L4）")
+    print("2 → 【批量修改】单个单元格内容")
+    choice = input("\n输入 1 或 2：").strip()
+
+    if choice == "1":
+        batch_check_fast_compare()
+    elif choice == "2":
+        batch_modify_cell()
+    else:
+        print("输入错误！")
