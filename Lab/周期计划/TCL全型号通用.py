@@ -20,7 +20,7 @@ class Config:
 
     # 处理模式配置
     PROCESS_MODE = {
-        'large_quantity': True,  # 处理实发数量>QUANTITY_THRESHOLD的单据
+        'large_quantity': False,  # 处理实发数量>QUANTITY_THRESHOLD的单据
         'closest_small_quantity': True  # 处理最近且实发数量<QUANTITY_THRESHOLD的单据
     }
 
