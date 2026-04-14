@@ -8,6 +8,8 @@ import os
 DEFAULT_DPI = 300
 ROTATE_THRESHOLD = 1.1  # 防误判系数（高度 > 宽度 * 1.1 才旋转）
 MAX_WORKERS = max(1, mp.cpu_count() - 1)
+# 固定处理的文件夹路径
+FIXED_PDF_DIR = r"E:\System\download\飞书下载"
 # ===========================================
 
 
@@ -84,19 +86,10 @@ def batch_process(pdf_dir: Path, dpi: int):
     print("\n全部处理完成")
 
 
-def get_input_path():
-    """
-    支持拖拽文件夹
-    """
-    if len(sys.argv) > 1:
-        return Path(sys.argv[1].strip('"'))
-
-    user_input = input("请输入PDF文件夹路径（或直接拖入）：").strip().strip('"')
-    return Path(user_input)
-
-
 if __name__ == "__main__":
     mp.freeze_support()  # Windows必须
 
-    pdf_dir = get_input_path()
+    # 直接使用写死的路径，无需输入
+    pdf_dir = Path(FIXED_PDF_DIR)
+    print(f"正在处理固定路径：{pdf_dir}\n")
     batch_process(pdf_dir, DEFAULT_DPI)
