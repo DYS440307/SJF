@@ -81,26 +81,61 @@ def batch_check_fast_compare():
 
 
 # ============================
-# 【批量修改】
+# 【优化：连续批量修改单元格】
 # ============================
 def batch_modify_cell():
-    print("\n=== 批量修改单元格 ===")
-    folder = input("路径：").strip()
-    cell = input("单元格（A1）：").strip()
-    content = input("新内容：").strip()
+    print("\n=== 批量连续修改单元格（仅输入一次路径）===")
+    # 1. 只输入一次路径，全程复用
+    folder = input("请输入文件夹路径：").strip()
+    if not os.path.isdir(folder):
+        print("❌ 路径错误")
+        return
 
+    # 2. 收集需要修改的单元格和内容（连续输入）
+    modify_list = []
+    print("\n📝 连续修改模式：输入单元格(如A1)和内容，输入 q 结束")
+    while True:
+        cell_addr = input("\n请输入单元格（输入 q 退出）：").strip()
+        if cell_addr.lower() == "q":
+            break
+        if not cell_addr:
+            print("❌ 单元格不能为空！")
+            continue
+
+        content = input(f"请输入 {cell_addr} 的新内容：").strip()
+        modify_list.append((cell_addr, content))
+        print(f"✅ 已添加修改：{cell_addr} = {content}")
+
+    # 无修改任务直接退出
+    if not modify_list:
+        print("\n❌ 未添加任何修改任务")
+        return
+
+    # 3. 批量执行修改（打开一次文件，修改所有单元格后保存）
     count = 0
-    for f in os.listdir(folder):
-        if f.lower().endswith(".xlsx"):
-            try:
-                wb = load_workbook(os.path.join(folder, f))
-                wb.active[cell] = content
-                wb.save(os.path.join(folder, f))
-                wb.close()
-                count += 1
-            except:
-                pass
-    print(f"\n✅ 完成！修改 {count} 个文件")
+    excel_files = [f for f in os.listdir(folder) if f.lower().endswith(".xlsx")]
+
+    if not excel_files:
+        print("\n❌ 文件夹中无Excel文件")
+        return
+
+    for filename in excel_files:
+        file_path = os.path.join(folder, filename)
+        try:
+            # 打开文件
+            wb = load_workbook(file_path)
+            ws = wb.active
+            # 批量修改所有单元格
+            for cell_addr, content in modify_list:
+                ws[cell_addr] = content
+            # 保存并关闭
+            wb.save(file_path)
+            wb.close()
+            count += 1
+        except Exception as e:
+            print(f"❌ 修改失败：{filename}，原因：{str(e)}")
+
+    print(f"\n🎉 全部修改完成！成功修改 {count} 个文件，共 {len(modify_list)} 个单元格")
 
 
 # ============================
@@ -152,8 +187,8 @@ def batch_rename_files():
 if __name__ == "__main__":
     print("===== Excel 批量工具合集 =====")
     print("1 → 核查对比（对齐版）")
-    print("2 → 批量修改单元格")
-    print("3 → 批量替换文件名称")  # 新增选项
+    print("2 → 批量连续修改单元格")
+    print("3 → 批量替换文件名称")
     print("==============================")
     c = input("请选择功能序号：").strip()
     if c == "1":
@@ -161,6 +196,6 @@ if __name__ == "__main__":
     elif c == "2":
         batch_modify_cell()
     elif c == "3":
-        batch_rename_files()  # 调用新增功能
+        batch_rename_files()
     else:
         print("❌ 输入错误，请输入1/2/3")
