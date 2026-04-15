@@ -35,7 +35,7 @@ def pdf_to_png_single(pdf_path: Path, out_base: Path, dpi: int):
 
             # ===== 判断是否旋转 =====
             if height > width * ROTATE_THRESHOLD:
-                matrix = fitz.Matrix(zoom, zoom).prerotate(-90)
+                matrix = fitz.Matrix(zoom, zoom).prerotate(0)
                 rotate_flag = "旋转90°"
             else:
                 matrix = fitz.Matrix(zoom, zoom)
