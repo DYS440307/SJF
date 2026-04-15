@@ -269,7 +269,7 @@ def generate_random_numbers(existing_values, value_range, ensure_first_larger=Fa
 def process_excel_file(file_path, output_dir, order_date, order_number, material_code, config):
     """
     处理单个Excel文件：填充三位小数随机数（行级波动+无末尾全0）并转换为PDF
-
+    新增逻辑：若B14为合并单元格，则【仅跳过随机数填充】，保留其他所有操作
     参数:
         file_path (str): 源Excel文件路径
         output_dir (str): 输出目录
@@ -282,6 +282,19 @@ def process_excel_file(file_path, output_dir, order_date, order_number, material
         bool: 处理是否成功
     """
     try:
+        # 打开Excel工作簿
+        workbook = openpyxl.load_workbook(file_path, data_only=False)
+        sheet = workbook.active
+
+        # ===================== 新增：判断B14是否为合并单元格 =====================
+        is_b14_merged = False
+        # 遍历所有合并单元格区域，检查B14是否在合并范围内
+        for merged_range in sheet.merged_cells.ranges:
+            if 'B14' in merged_range:
+                is_b14_merged = True
+                break
+        # ======================================================================
+
         # 从订单日期字符串提取年份和月份
         year, month, _ = order_date.split('/')
         month_folder = f"{year}年{month}月"
@@ -291,118 +304,119 @@ def process_excel_file(file_path, output_dir, order_date, order_number, material
         month_dir = os.path.join(material_dir, month_folder)
         os.makedirs(month_dir, exist_ok=True)
 
-        # 打开Excel工作簿
-        workbook = openpyxl.load_workbook(file_path, data_only=False)
-        sheet = workbook.active
-
-        # 写入订单信息
+        # 写入订单信息（无论是否合并，都执行）
         sheet['G2'] = order_date
         sheet['L2'] = order_number
 
-        # 用于存储已生成的值，确保不重复
-        existing_values = set()
+        # ===================== 核心修改：仅跳过随机数填充 =====================
+        if not is_b14_merged:
+            # B14未合并 → 正常填充随机数
+            existing_values = set()
+            # 填充随机数到指定区域
+            for row in range(config.ROW_START, config.ROW_END + 1):
+                # 初始化变量，避免NameError
+                value_b, value_c, value_d, value_e, value_f, value_g, value_h, value_i = None, None, None, None, None, None, None, None
 
-        # 填充随机数到指定区域
-        for row in range(config.ROW_START, config.ROW_END + 1):
-            # 初始化变量，避免NameError
-            value_b, value_c, value_d, value_e, value_f, value_g, value_h, value_i = None, None, None, None, None, None, None, None
+                # ========== 核心优化：行级别的随机范围调整 ==========
+                row_range_config = {}
+                # 为不同列定义不同的波动范围（更贴近真实数据）
+                col_fluctuation = {
+                    'B_C': (0.98, 1.02),  # B/C列 ±2% 波动
+                    'D_E': (0.97, 1.03),  # D/E列 ±3% 波动
+                    'F_G': (0.99, 1.01),  # F/G列 ±1% 波动
+                    'H_I': (0.96, 1.04)  # H/I列 ±4% 波动
+                }
+                for key, (min_val, max_val, min_diff) in config.RANGE_CONFIG.items():
+                    # 按列获取专属的波动比例
+                    min_ratio, max_ratio = col_fluctuation.get(key, (0.98, 1.02))
+                    adjust_ratio = secrets.SystemRandom().uniform(min_ratio, max_ratio)
+                    # 调整最小值和最大值
+                    adjusted_min = min_val * adjust_ratio
+                    adjusted_max = max_val * adjust_ratio
+                    # 确保调整后的范围不会反转（最小值 < 最大值）
+                    if adjusted_min >= adjusted_max:
+                        adjusted_min = min_val * 0.99
+                        adjusted_max = max_val * 1.01
+                    # 保存当前行的专属范围配置
+                    row_range_config[key] = (adjusted_min, adjusted_max, min_diff)
+                # ==================================================
 
-            # ========== 核心优化：行级别的随机范围调整 ==========
-            row_range_config = {}
-            # 为不同列定义不同的波动范围（更贴近真实数据）
-            col_fluctuation = {
-                'B_C': (0.98, 1.02),  # B/C列 ±2% 波动
-                'D_E': (0.97, 1.03),  # D/E列 ±3% 波动
-                'F_G': (0.99, 1.01),  # F/G列 ±1% 波动
-                'H_I': (0.96, 1.04)  # H/I列 ±4% 波动
-            }
-            for key, (min_val, max_val, min_diff) in config.RANGE_CONFIG.items():
-                # 按列获取专属的波动比例
-                min_ratio, max_ratio = col_fluctuation.get(key, (0.98, 1.02))
-                adjust_ratio = secrets.SystemRandom().uniform(min_ratio, max_ratio)
-                # 调整最小值和最大值
-                adjusted_min = min_val * adjust_ratio
-                adjusted_max = max_val * adjust_ratio
-                # 确保调整后的范围不会反转（最小值 < 最大值）
-                if adjusted_min >= adjusted_max:
-                    adjusted_min = min_val * 0.99
-                    adjusted_max = max_val * 1.01
-                # 保存当前行的专属范围配置
-                row_range_config[key] = (adjusted_min, adjusted_max, min_diff)
-            # ==================================================
+                max_attempts = 800  # 最大尝试次数
+                for attempt in range(max_attempts):
+                    # 临时集合，用于验证当前尝试的所有值
+                    temp_values = set(existing_values)
 
-            max_attempts = 800  # 最大尝试次数
-            for attempt in range(max_attempts):
-                # 临时集合，用于验证当前尝试的所有值
-                temp_values = set(existing_values)
+                    # 生成所有列值（使用行专属范围+三位小数规则）
+                    try:
+                        # B列和C列（C < B）
+                        value_b, value_c = generate_random_numbers(temp_values, row_range_config['B_C'],
+                                                                   ensure_first_larger=True)
+                        temp_values.update([value_b, value_c])
 
-                # 生成所有列值（使用行专属范围+三位小数规则）
-                try:
-                    # B列和C列（C < B）
-                    value_b, value_c = generate_random_numbers(temp_values, row_range_config['B_C'],
-                                                               ensure_first_larger=True)
-                    temp_values.update([value_b, value_c])
+                        # D列和E列（E > D）
+                        value_d, value_e = generate_random_numbers(temp_values, row_range_config['D_E'],
+                                                                   ensure_first_larger=False)
+                        temp_values.update([value_d, value_e])
 
-                    # D列和E列（E > D）
-                    value_d, value_e = generate_random_numbers(temp_values, row_range_config['D_E'],
-                                                               ensure_first_larger=False)
-                    temp_values.update([value_d, value_e])
+                        # F列和G列（G < F）
+                        value_f, value_g = generate_random_numbers(temp_values, row_range_config['F_G'],
+                                                                   ensure_first_larger=True)
+                        temp_values.update([value_f, value_g])
 
-                    # F列和G列（G < F）
-                    value_f, value_g = generate_random_numbers(temp_values, row_range_config['F_G'],
-                                                               ensure_first_larger=True)
-                    temp_values.update([value_f, value_g])
+                        # H列和I列（I > H）
+                        value_h, value_i = generate_random_numbers(temp_values, row_range_config['H_I'],
+                                                                   ensure_first_larger=False)
+                        temp_values.update([value_h, value_i])
 
-                    # H列和I列（I > H）
-                    value_h, value_i = generate_random_numbers(temp_values, row_range_config['H_I'],
-                                                               ensure_first_larger=False)
-                    temp_values.update([value_h, value_i])
+                        # 验证所有条件
+                        if (value_c < value_b and
+                                value_e > value_d and
+                                value_g < value_f and
+                                value_i > value_h):
+                            # 条件全部满足，更新existing_values并跳出循环
+                            existing_values.update(temp_values)
+                            break
 
-                    # 验证所有条件
-                    if (value_c < value_b and
-                            value_e > value_d and
-                            value_g < value_f and
-                            value_i > value_h):
-                        # 条件全部满足，更新existing_values并跳出循环
-                        existing_values.update(temp_values)
-                        break
+                    except Exception as e:
+                        # 生成失败，继续尝试
+                        pass
 
-                except Exception as e:
-                    # 生成失败，继续尝试
-                    pass
+                    if attempt == max_attempts - 1:
+                        raise Exception(f"行 {row}: 无法在{max_attempts}次尝试内生成满足所有条件的随机数")
 
-                if attempt == max_attempts - 1:
-                    raise Exception(f"行 {row}: 无法在{max_attempts}次尝试内生成满足所有条件的随机数")
+                # 写入数据到对应单元格 + 设置三位小数格式（强制保留三位）
+                sheet[f'B{row}'] = value_b
+                sheet[f'B{row}'].number_format = '0.000'  # 强制三位小数
+                sheet[f'C{row}'] = value_c
+                sheet[f'C{row}'].number_format = '0.000'
+                sheet[f'D{row}'] = value_d
+                sheet[f'D{row}'].number_format = '0.000'
+                sheet[f'E{row}'] = value_e
+                sheet[f'E{row}'].number_format = '0.000'
+                sheet[f'F{row}'] = value_f
+                sheet[f'F{row}'].number_format = '0.000'
+                sheet[f'G{row}'] = value_g
+                sheet[f'G{row}'].number_format = '0.000'
+                sheet[f'H{row}'] = value_h
+                sheet[f'H{row}'].number_format = '0.000'
+                sheet[f'I{row}'] = value_i
+                sheet[f'I{row}'].number_format = '0.000'
 
-            # 写入数据到对应单元格 + 设置三位小数格式（强制保留三位）
-            sheet[f'B{row}'] = value_b
-            sheet[f'B{row}'].number_format = '0.000'  # 强制三位小数
-            sheet[f'C{row}'] = value_c
-            sheet[f'C{row}'].number_format = '0.000'
-            sheet[f'D{row}'] = value_d
-            sheet[f'D{row}'].number_format = '0.000'
-            sheet[f'E{row}'] = value_e
-            sheet[f'E{row}'].number_format = '0.000'
-            sheet[f'F{row}'] = value_f
-            sheet[f'F{row}'].number_format = '0.000'
-            sheet[f'G{row}'] = value_g
-            sheet[f'G{row}'].number_format = '0.000'
-            sheet[f'H{row}'] = value_h
-            sheet[f'H{row}'].number_format = '0.000'
-            sheet[f'I{row}'] = value_i
-            sheet[f'I{row}'].number_format = '0.000'
+                # 更新已存在的值集合
+                existing_values.update([value_b, value_c, value_d, value_e, value_f, value_g, value_h, value_i])
+        else:
+            # B14是合并单元格 → 打印提示，跳过随机数填充
+            print(f"ℹ️ B14为合并单元格，已跳过随机数填充")
+        # ======================================================================
 
-            # 更新已存在的值集合
-            existing_values.update([value_b, value_c, value_d, value_e, value_f, value_g, value_h, value_i])
-
-        # 保存修改后的Excel文件
+        # 保存修改后的Excel文件（无论是否合并，都执行）
         file_name = os.path.basename(file_path)
         new_name = file_name.replace("模板", f"_{order_number}")
         output_file_path = os.path.join(month_dir, new_name)
         workbook.save(output_file_path)
         print(f"成功处理Excel: {file_name} -> {new_name} (物料编码: {material_code}, 月份: {month_folder})")
 
-        # 转换为PDF
+        # 转换为PDF（无论是否合并，都执行）
         pdf_material_dir = os.path.join(config.PDF_OUTPUT_DIR, str(material_code))
         pdf_month_dir = os.path.join(pdf_material_dir, month_folder)
         os.makedirs(pdf_month_dir, exist_ok=True)
