@@ -6,6 +6,7 @@ from datetime import datetime
 import win32com.client
 import time
 from pathlib import Path
+import PyPDF2
 
 
 class Config:
@@ -212,6 +213,33 @@ class Config:
         return True
 
 
+# ===== 新增：PDF合并工具函数 =====
+def merge_pdfs(pdf_paths, output_path):
+    """
+    合并多个PDF文件为一个
+    :param pdf_paths: 单页PDF路径列表
+    :param output_path: 合并后PDF输出路径
+    """
+    if not pdf_paths:
+        print("❌ 无PDF文件可合并")
+        return False
+
+    try:
+        pdf_merger = PyPDF2.PdfMerger()
+        for pdf in pdf_paths:
+            if os.path.exists(pdf):
+                pdf_merger.append(pdf)
+
+        # 保存合并后的PDF
+        pdf_merger.write(output_path)
+        pdf_merger.close()
+        print(f"✅ PDF合并完成：{output_path}")
+        return True
+    except Exception as e:
+        print(f"❌ PDF合并失败：{str(e)}")
+        return False
+
+
 # ===== 功能函数 =====
 def generate_random_numbers(existing_values, value_range, ensure_first_larger=False):
     """
@@ -279,14 +307,14 @@ def process_excel_file(file_path, output_dir, order_date, order_number, material
         config (Config): 配置对象
 
     返回:
-        bool: 处理是否成功
+        生成的PDF路径 / None
     """
     try:
         # 打开Excel工作簿
         workbook = openpyxl.load_workbook(file_path, data_only=False)
         sheet = workbook.active
 
-        # ===================== 新增：判断B14是否为合并单元格 =====================
+        # ===================== 判断B14是否为合并单元格 =====================
         is_b14_merged = False
         # 遍历所有合并单元格区域，检查B14是否在合并范围内
         for merged_range in sheet.merged_cells.ranges:
@@ -295,20 +323,20 @@ def process_excel_file(file_path, output_dir, order_date, order_number, material
                 break
         # ======================================================================
 
-        # 从订单日期字符串提取年份和月份
-        year, month, _ = order_date.split('/')
-        month_folder = f"{year}年{month}月"
+        # 从订单日期字符串提取年份、月份、日期
+        year, month, day = order_date.split('/')
+        date_folder = f"{year}年{month}月{day}日"
 
-        # 基于物料编码和月份创建子目录
+        # 基于物料编码和日期创建子目录
         material_dir = os.path.join(output_dir, str(material_code))
-        month_dir = os.path.join(material_dir, month_folder)
-        os.makedirs(month_dir, exist_ok=True)
+        date_dir = os.path.join(material_dir, date_folder)
+        os.makedirs(date_dir, exist_ok=True)
 
         # 写入订单信息（无论是否合并，都执行）
         sheet['G2'] = order_date
         sheet['L2'] = order_number
 
-        # ===================== 核心修改：仅跳过随机数填充 =====================
+        # ===================== 仅跳过随机数填充 =====================
         if not is_b14_merged:
             # B14未合并 → 正常填充随机数
             existing_values = set()
@@ -412,26 +440,26 @@ def process_excel_file(file_path, output_dir, order_date, order_number, material
         # 保存修改后的Excel文件（无论是否合并，都执行）
         file_name = os.path.basename(file_path)
         new_name = file_name.replace("模板", f"_{order_number}")
-        output_file_path = os.path.join(month_dir, new_name)
+        output_file_path = os.path.join(date_dir, new_name)
         workbook.save(output_file_path)
-        print(f"成功处理Excel: {file_name} -> {new_name} (物料编码: {material_code}, 月份: {month_folder})")
+        print(f"成功处理Excel: {file_name} -> {new_name} (物料编码: {material_code}, 日期: {date_folder})")
 
         # 转换为PDF（无论是否合并，都执行）
         pdf_material_dir = os.path.join(config.PDF_OUTPUT_DIR, str(material_code))
-        pdf_month_dir = os.path.join(pdf_material_dir, month_folder)
-        os.makedirs(pdf_month_dir, exist_ok=True)
-        pdf_path = os.path.join(pdf_month_dir, os.path.splitext(new_name)[0] + ".pdf")
+        pdf_date_dir = os.path.join(pdf_material_dir, date_folder)
+        os.makedirs(pdf_date_dir, exist_ok=True)
+        pdf_path = os.path.join(pdf_date_dir, os.path.splitext(new_name)[0] + ".pdf")
 
         if excel_to_pdf(output_file_path, pdf_path):
             print(f"成功转换为PDF: {pdf_path}")
-            return True
+            return pdf_path
         else:
             print(f"PDF转换失败: {output_file_path}")
-            return False
+            return None
 
     except Exception as e:
         print(f"处理文件 {file_path} 时出错: {e}")
-        return False
+        return None
 
 
 def excel_to_pdf(excel_path, pdf_path):
@@ -467,14 +495,11 @@ def excel_to_pdf(excel_path, pdf_path):
         # 释放COM对象
         del workbook
         del excel
-
+        time.sleep(0.5)
         return True
     except Exception as e:
         print(f"Excel转PDF失败: {excel_path} -> {pdf_path}, 错误: {e}")
         return False
-    finally:
-        # 确保资源被释放
-        time.sleep(1)  # 等待Excel完全退出
 
 
 def get_input_pairs(config, target_material_code):
@@ -537,9 +562,9 @@ def get_all_pairs(config, target_material_code):
         print(f"共提取 {len(pairs)} 个物料编码为 {target_material_code} 的全部订单")
         return pairs
 
-    except Exception as e:
+    except Exception as e:  # 修复这里：ase → as e
         print(f"获取单据时出错: {e}")
-        return pairs
+        return []
 
 
 def format_date(date_value):
@@ -603,7 +628,7 @@ def main():
 
         if not material_codes:
             print("未在销售明细中找到有效的物料编码，程序退出")
-            return
+            return 1
 
         print(f"找到 {len(material_codes)} 种不同的物料编码: {', '.join(material_codes)}")
 
@@ -618,8 +643,6 @@ def main():
             print(f"  源目录: {config.SOURCE_DIR}")
             print(f"  输出目录: {config.OUTPUT_DIR}")
             print(f"  PDF输出目录: {config.PDF_OUTPUT_DIR}")
-            print(f"  销售明细文件: {config.SALES_DETAIL_FILE}")
-            print(f"  配置文件: {config.CONFIG_FILE}")
 
             # 获取该物料编码的【所有】单据
             input_pairs = get_input_pairs(config, material_code)
@@ -639,14 +662,31 @@ def main():
             for order_date, order_number, material_code in input_pairs:
                 print(f"\n处理订单: {order_date} {order_number} (物料编码: {material_code})")
                 success_count = 0
+                # 每个订单单独收集PDF路径
+                order_pdf_paths = []
 
                 for file_path in excel_files:
-                    if process_excel_file(file_path, config.OUTPUT_DIR, order_date, order_number, material_code,
-                                          config):
+                    pdf_path = process_excel_file(file_path, config.OUTPUT_DIR, order_date, order_number, material_code,
+                                          config)
+                    if pdf_path:
                         success_count += 1
+                        order_pdf_paths.append(pdf_path)
 
-                print(
-                    f"订单 {order_number} 处理完成: 成功 {success_count} 个, 失败 {len(excel_files) - success_count} 个")
+                print(f"订单 {order_number} 处理完成: 成功 {success_count} 个, 失败 {len(excel_files) - success_count} 个")
+
+                # 按 物料编码+年月日 合并PDF
+                if order_pdf_paths:
+                    # 格式化年月日：2025/1/1 → 20250101
+                    date_str = order_date.replace("/", "")
+                    # 合并PDF保存路径
+                    year, month, day = order_date.split('/')
+                    date_folder = f"{year}年{month}月{day}日"
+                    merge_dir = os.path.join(config.PDF_OUTPUT_DIR, str(material_code), date_folder)
+                    os.makedirs(merge_dir, exist_ok=True)
+                    # 命名：物料编码_年月日_合并报告.pdf
+                    merge_pdf_path = os.path.join(merge_dir, f"{material_code}_{date_str}_合并报告.pdf")
+                    # 执行合并
+                    merge_pdfs(order_pdf_paths, merge_pdf_path)
 
     except Exception as e:
         print(f"程序执行失败: {e}")
