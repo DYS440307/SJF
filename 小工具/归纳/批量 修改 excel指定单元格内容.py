@@ -11,11 +11,11 @@ def format_cell(value, width=10):
 
 
 # ============================
-# 【核查对比：绝对对齐版】
+# 【核查对比：递归遍历子文件夹版】
 # ============================
 def batch_check_fast_compare():
     print("=" * 80)
-    print("📊 Excel 批量对比工具（PyCharm 对齐版）")
+    print("📊 Excel 批量对比工具（递归遍历子文件夹）")
     print("=" * 80)
 
     folder_path = input("请输入文件夹路径：").strip()
@@ -31,24 +31,30 @@ def batch_check_fast_compare():
         print("❌ 格式错误")
         return
 
-    # 读取所有文件
+    # 读取所有文件（递归遍历子文件夹）
     files_data = []
     filenames = []
 
-    for f in os.listdir(folder_path):
-        if f.lower().endswith(".xlsx"):
-            try:
-                wb = load_workbook(os.path.join(folder_path, f), read_only=True, data_only=True)
-                ws = wb.active
-                rows = []
-                for row in ws.iter_rows(min_row, max_row, min_col, max_col):
-                    rows.append([cell.value for cell in row])
-                wb.close()
-                files_data.append(rows)
-                filenames.append(f)
-                print(f"✅ {f}")
-            except:
-                print(f"❌ {f}")
+    # 递归遍历所有子文件夹
+    for root, dirs, files in os.walk(folder_path):
+        for f in files:
+            if f.lower().endswith(".xlsx"):
+                file_path = os.path.join(root, f)
+                try:
+                    wb = load_workbook(file_path, read_only=True, data_only=True)
+                    ws = wb.active
+                    rows = []
+                    for row in ws.iter_rows(min_row, max_row, min_col, max_col):
+                        rows.append([cell.value for cell in row])
+                    wb.close()
+                    files_data.append(rows)
+                    # 存储相对路径，方便区分子文件夹文件
+                    rel_path = os.path.relpath(file_path, folder_path)
+                    filenames.append(rel_path)
+                    print(f"✅ {rel_path}")
+                except Exception as e:
+                    rel_path = os.path.relpath(file_path, folder_path)
+                    print(f"❌ {rel_path}")
 
     if not files_data:
         print("\n未找到Excel")
@@ -67,8 +73,8 @@ def batch_check_fast_compare():
         print("-" * 120)
 
         for file_idx, data in enumerate(files_data):
-            # 文件名固定宽度
-            name = f"[{filenames[file_idx]:<25}]"
+            # 文件名固定宽度（支持子文件夹路径显示）
+            name = f"[{filenames[file_idx]:<35}]"
 
             # 每一列强制等宽
             cells = [format_cell(v) for v in data[row_idx]]
@@ -77,14 +83,14 @@ def batch_check_fast_compare():
             print(f"{name} │ {line}")
 
     print("\n" + "=" * 120)
-    print("✅ 对比完成！PyCharm 控制台完美对齐")
+    print("✅ 对比完成！遍历所有子文件夹Excel")
 
 
 # ============================
-# 【优化：连续批量修改单元格】
+# 【优化：连续批量修改单元格 + 递归遍历】
 # ============================
 def batch_modify_cell():
-    print("\n=== 批量连续修改单元格（仅输入一次路径）===")
+    print("\n=== 批量连续修改单元格（递归遍历子文件夹）===")
     # 1. 只输入一次路径，全程复用
     folder = input("请输入文件夹路径：").strip()
     if not os.path.isdir(folder):
@@ -111,39 +117,37 @@ def batch_modify_cell():
         print("\n❌ 未添加任何修改任务")
         return
 
-    # 3. 批量执行修改（打开一次文件，修改所有单元格后保存）
+    # 3. 递归遍历所有子文件夹，批量执行修改
     count = 0
-    excel_files = [f for f in os.listdir(folder) if f.lower().endswith(".xlsx")]
-
-    if not excel_files:
-        print("\n❌ 文件夹中无Excel文件")
-        return
-
-    for filename in excel_files:
-        file_path = os.path.join(folder, filename)
-        try:
-            # 打开文件
-            wb = load_workbook(file_path)
-            ws = wb.active
-            # 批量修改所有单元格
-            for cell_addr, content in modify_list:
-                ws[cell_addr] = content
-            # 保存并关闭
-            wb.save(file_path)
-            wb.close()
-            count += 1
-        except Exception as e:
-            print(f"❌ 修改失败：{filename}，原因：{str(e)}")
+    for root, dirs, files in os.walk(folder):
+        for filename in files:
+            if filename.lower().endswith(".xlsx"):
+                file_path = os.path.join(root, filename)
+                rel_path = os.path.relpath(file_path, folder)
+                try:
+                    # 打开文件
+                    wb = load_workbook(file_path)
+                    ws = wb.active
+                    # 批量修改所有单元格
+                    for cell_addr, content in modify_list:
+                        ws[cell_addr] = content
+                    # 保存并关闭
+                    wb.save(file_path)
+                    wb.close()
+                    count += 1
+                    print(f"✅ 修改成功：{rel_path}")
+                except Exception as e:
+                    print(f"❌ 修改失败：{rel_path}，原因：{str(e)}")
 
     print(f"\n🎉 全部修改完成！成功修改 {count} 个文件，共 {len(modify_list)} 个单元格")
 
 
 # ============================
-# 【新增：批量替换文件名称】
+# 【批量重命名 + 递归遍历子文件夹】
 # ============================
 def batch_rename_files():
     print("\n" + "=" * 50)
-    print("📝 批量替换文件名称（只修改Excel文件）")
+    print("📝 批量替换文件名称（递归遍历子文件夹）")
     print("=" * 50)
 
     folder = input("请输入文件夹路径：").strip()
@@ -160,23 +164,26 @@ def batch_rename_files():
         return
 
     count = 0
-    for filename in os.listdir(folder):
-        # 只处理Excel文件
-        if not filename.lower().endswith((".xlsx", ".xls")):
-            continue
+    # 递归遍历所有子文件夹
+    for root, dirs, files in os.walk(folder):
+        for filename in files:
+            # 只处理Excel文件
+            if not filename.lower().endswith((".xlsx", ".xls")):
+                continue
+            # 包含要替换的文字才修改
+            if old_str in filename:
+                old_path = os.path.join(root, filename)
+                new_filename = filename.replace(old_str, new_str)
+                new_path = os.path.join(root, new_filename)
+                rel_old = os.path.relpath(old_path, folder)
+                rel_new = os.path.relpath(new_path, folder)
 
-        # 包含要替换的文字才修改
-        if old_str in filename:
-            old_path = os.path.join(folder, filename)
-            new_filename = filename.replace(old_str, new_str)
-            new_path = os.path.join(folder, new_filename)
-
-            try:
-                os.rename(old_path, new_path)
-                print(f"✅ {filename} → {new_filename}")
-                count += 1
-            except Exception as e:
-                print(f"❌ 重命名失败：{filename}，原因：{str(e)}")
+                try:
+                    os.rename(old_path, new_path)
+                    print(f"✅ {rel_old} → {rel_new}")
+                    count += 1
+                except Exception as e:
+                    print(f"❌ 重命名失败：{rel_old}，原因：{str(e)}")
 
     print(f"\n🎉 重命名完成！成功修改 {count} 个Excel文件")
 
@@ -185,11 +192,11 @@ def batch_rename_files():
 # 主程序
 # ============================
 if __name__ == "__main__":
-    print("===== Excel 批量工具合集 =====")
-    print("1 → 核查对比（对齐版）")
-    print("2 → 批量连续修改单元格")
-    print("3 → 批量替换文件名称")
-    print("==============================")
+    print("===== Excel 批量工具合集（全递归版）=====")
+    print("1 → 核查对比（遍历所有子文件夹）")
+    print("2 → 批量连续修改单元格（遍历所有子文件夹）")
+    print("3 → 批量替换文件名称（遍历所有子文件夹）")
+    print("========================================")
     c = input("请选择功能序号：").strip()
     if c == "1":
         batch_check_fast_compare()
